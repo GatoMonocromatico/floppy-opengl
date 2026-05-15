@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="Tetris-roguelike-0.1.vcxproj" Id="b67faa2d-256b-46a3-b913-5441e91a3f71" />
-</Solution>
