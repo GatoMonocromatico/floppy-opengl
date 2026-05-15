@@ -1,420 +1,411 @@
-/*void AIPlay(const SDLState& state, GameState& gs, Resources& res, GridData& gridData, int gridIndex, int numBestPlaysAnalised, int analysisDepth)
-{
-	std::vector<Piece>& nextBricks = gridData.nextBricks;
-
-	std::vector<std::vector<GameObject>>& grid = gridData.gridUnitsData;
-	std::vector<BrickData>& currentBricks = gridData.currentBricks;
-	BrickData& playingBrick = currentBricks[currentBricks.size() - 1];
-
-	std::vector<float> finalEvaluations;
-
-	std::vector<EvaluationInfo> firstPlaysConsidered = AIDecideBestPlays(state, gs, res, grid, currentBricks, gridIndex, numBestPlaysAnalised);
-
-
-	std::vector<EvaluationInfo> playsConsideredNow;
-	std::vector<EvaluationInfo> playsConsideredNextIteration;
-
-	for (int i = 0; i < numBestPlaysAnalised; i++)
-	{
-		std::vector<std::vector<GameObject>> testGrid = grid;
-		std::vector<BrickData> testCurrentBricks = currentBricks;
-		std::vector<Piece> testNextBricks = nextBricks;
-
-		// plays the brick
-		testCurrentBricks[testCurrentBricks.size() - 1] = firstPlaysConsidered[i].brick;
-		testCurrentBricks[testCurrentBricks.size() - 1].state = BrickState::solid;
-
-		// creates new brick
-		createPlayingBrick(gs, res, testCurrentBricks, gridIndex, testNextBricks[0]);
-		gs.grids[gridIndex].idNextCreatedBrick -= 1;
-
-		// updates position
-		updateGrid(gs, res, testGrid, testCurrentBricks, gridIndex);
-
-		playsConsideredNow = AIDecideBestPlays(state, gs, res, testGrid, testCurrentBricks, gridIndex, numBestPlaysAnalised, firstPlaysConsidered[i]);
-
-		stepNextBricks(gs, res, testNextBricks, gridIndex);
-		cleanFullLines(gs, testGrid, testCurrentBricks);
-
-
-#ifdef DEBUG
-		std::cout << "loop 1 -> " << i << "\n";
-#endif // DEBUG
-
-		for (int j = 0; j < analysisDepth; j++)
-		{
-
-#ifdef DEBUG
-			std::cout << "loop 2 -> " << j << "\n";
-#endif // DEBUG
-
-			for (int k = 0; k < playsConsideredNow.size(); k++)
-			{
-
-
-#ifdef DEBUG
-				std::cout << "loop 3 -> " << k << "\n";
-				std::cout << "size playsConsideredNow -> " << playsConsideredNow.size() << "\n";
-				std::cout << "piece -> " << static_cast<int>(testNextBricks[0]) << "\n\n";
-#endif // DEBUG
-				testCurrentBricks[testCurrentBricks.size() - 1] = playsConsideredNow[k].brick;
-				testCurrentBricks[testCurrentBricks.size() - 1].state = BrickState::solid;
-
-				// creates new brick
-				createPlayingBrick(gs, res, testCurrentBricks, gridIndex, testNextBricks[0]);
-				gs.grids[gridIndex].idNextCreatedBrick -= 1;
-
-				// updates position
-				updateGrid(gs, res, testGrid, testCurrentBricks, gridIndex);
-
-				for (EvaluationInfo b : AIDecideBestPlays(state, gs, res, testGrid, testCurrentBricks, gridIndex, numBestPlaysAnalised))
-				{
-					playsConsideredNextIteration.push_back(b);
-
-#ifdef DEBUG
-					std::cout << "(interno)loop 3 -> " << k << "rodou" << "\n";
-#endif // DEBUG
-
-				}
-
-			}
-
-			stepNextBricks(gs, res, testNextBricks, gridIndex);
-			cleanFullLines(gs, testGrid, testCurrentBricks);
-
-
-			playsConsideredNextIteration.resize(0);
-		}
-
-
-#ifdef DEBUG
-		std::cout << "1" << "\n";
-#endif // DEBUG
-
-		std::vector<float> thisEvaluations;
-
-		for (EvaluationInfo eval : playsConsideredNow)
-		{
-			thisEvaluations.push_back(eval.getTotalEvaluation());
-		}
-
-
-#ifdef DEBUG
-		std::cout << "2" << "\n";
-#endif // DEBUG
-
-		auto maxItThisEvaluations = std::max_element(thisEvaluations.begin(), thisEvaluations.end());
-
-
-#ifdef DEBUG
-		std::cout << "3" << "\n";
-#endif // DEBUG
-
-		finalEvaluations.push_back(*maxItThisEvaluations);
-
-
-#ifdef DEBUG
-		std::cout << "4" << "\n";
-#endif // DEBUG
-	}
-
-	auto maxIt = std::max_element(finalEvaluations.begin(), finalEvaluations.end());
-
-	playingBrick = firstPlaysConsidered[maxIt - finalEvaluations.begin()].brick;
-
-
-#ifdef DEBUG
-	std::cout << finalEvaluations[maxIt - finalEvaluations.begin()];
-#endif // DEBUG
-
-	playingPieceDropped(gs, res, grid, currentBricks, nextBricks, gridIndex);
-}*/
-/*
-std::vector<float> evaluatePosition(GameState& gs, Resources& res, GridData& gridData, int atack, size_t thisGridIndex)
-{
-
-	auto towerAvarageHeightEval = [&](float h)
-		{
-			return (-(std::pow(h, 3) * 591.0f) / 5780.0f) + ((std::pow(h, 2) * 2231.0f) / 5780.0f) + ((19444.0f * h) / 1445.0f) + 20.0f;
-		};
-	auto towerHeightStandardDeviationEval = [&](float x)
-		{
-			return -std::pow(1 + x, 6) + 101;
-		};
-	//auto numSemiFilledLinesEval = [&](float x)
-	//	{
-	//		return 100.0f - 1.0f / std::pow(1.5, x - 11.357);
-	//	};
-
-	auto linesConfigurationEval = [&](int badX, int goodX)
-		{
-			return (100.0f - 1.0f / std::pow(1.5, goodX / 1.5f - 11.357)) - (100.0f - 1.0f / std::pow(1.5, (badX - 1) * 1.2f - 11.357));
-		};
-	auto atackEval = [&](float x)
-		{
-			return static_cast<float>(x > 1 ? std::pow(75, x / 3.5f) + 25 : 0);
-		};
-	auto numLinesWithCavitysEval = [&](float x)
-		{
-
-			return x < 3 ? 0 : std::pow(75, x / 2.0f) + 50;
-		};
-	auto alignedAtackLinesEval = [&](int x)
-		{
-			return  45.0f * std::log10(x + 1);
-		};
-	float eval = 0;
-	//eval = 0;
-	//	towerAvarageHeightEval(towerAvarageHeight) * 1
-	//	+ towerHeightStandardDeviationEval(towerHeightStandardDeviation) * 10
-	//	+ linesConfigurationEval(numBadLines, numGoodLines) * 1
-	//	- numLinesWithCavitysEval(numLinesWithCavitys) * 2
-	//	+ alignedAtackLinesEval(alignedAtackLines) * 1
-	//	;
-
-	return std::vector<float>{eval, atackEval(atack) * 2};
-};
-
-std::vector<Play> AIDecideBestPlays(const SDLState& state, GameState& gs, Resources& res, GridData& gridData, int gridIndex, int numBestPlays, Play lastPlay)
-{
-	std::vector<Play> plays;
-	std::vector<BrickData>& currentBricks = gridData.currentBricks;
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
-	BrickData& playingBrick = currentBricks.back();
-
-	std::vector<glm::ivec2> originalPositions;
-	for (GameObject& u : playingBrick.units)
-	{
-		BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-		originalPositions.push_back(uData.position);
-	}
-
-	for (int i = 0; i < 4; i++)
-	{
-		if (updateBrickPositionRotation(gridData.currentBricks.back(), gridData, i))
-		{
-			while (updateBrickPositionTranslational(gridData.currentBricks.back(), gridData, glm::ivec2(-1, 0)))
-			{
-			}
-
-			for (int c = 0; c < gridData.gridColumns; c++)
-			{
-				if (updateBrickPositionTranslational(gridData.currentBricks.back(), gridData, glm::ivec2(c, 0)))
-				{
-					while (updateBrickPositionTranslational(gridData.currentBricks.back(), gridData, glm::ivec2(0, 1)))
-					{
-					}
-
-					for (int i = 0; i < 4; i++)
-					{
-						if (updateBrickPositionRotation(gridData.currentBricks.back(), gridData, i))
-						{
-							while (updateBrickPositionTranslational(gridData.currentBricks.back(), gridData, glm::ivec2(0, 1)))
-							{
-							}
-
-							AtackInfo atackInfo = playingPieceDropped(gs, res, gridData, gridIndex, false);
-
-							plays.push_back(Play(evaluatePosition(gs, res, gridData, atackInfo.atack, gridIndex), gridData.currentBricks.back()));
-
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-
-
-							//statistics update
-							//statistics update
-							//statistics update
-							std::vector<int> rowsToUpdate;
-
-							playingBrick.state = BrickState::idle;
-
-							for (GameObject& u : playingBrick.units)
-							{
-								BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-
-								int& X = uData.position.x;
-								int& Y = uData.position.y;
-
-								RowStatistics& row = gridData.rowsStatus[Y];
-
-								// adds unit to new row if it is not deprecated
-								row.numOfBricks -= 1;
-
-								X = originalPositions[uData.numeration].x;
-								Y = originalPositions[uData.numeration].y;
-
-								rowsToUpdate.push_back(Y);
-							}
-
-							std::sort(rowsToUpdate.begin(), rowsToUpdate.end());
-
-							//for (std::array<int8_t, 3>& gapInfo : gridData.columnsAligningConsecutiveAtackGaps)
-							//{
-							//	if (rowsToUpdate.front())
-							//}
-
-							if (!playingBrick.hasToUpdate)
-							{
-								gridData.bricksToUpdate.push_back(playingBrick.indexInCurrentBricks);
-								playingBrick.hasToUpdate = true;
-							}
-							//statistics update
-							//statistics update
-							//statistics update
-
-							updateGrid(gs, res, gridData, gridIndex, false);
-
-							if (atackInfo.rowsWereEliminated())
-							{
-								int eliminatedRowIndex = 0;
-								for (int i = atackInfo.lowestRowEliminated; i > 0; i--)
-								{
-									// if row was deleted, restore the data their units especific data
-									if (i == atackInfo.rowsEliminatedCords[eliminatedRowIndex])
-									{
-										for (GameObject& u : atackInfo.unitDataRowsEliminated[eliminatedRowIndex])
-										{
-											BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-											BrickData& unitsBrick = gridData.currentBricks[uData.indexInCurrentBricks];
-
-											unitsBrick.numDreprecatedUnits -= 1;
-
-											uData.shape = unitsBrick.shape;
-											if (!unitsBrick.hasToUpdate)
-											{
-												gridData.bricksToUpdate.push_back(unitsBrick.indexInCurrentBricks);
-												unitsBrick.hasToUpdate = true;
-											}
-										}
-										eliminatedRowIndex += 1;
-									}
-									// if all line data was restored, break, and update columns height
-									// it updates the columns height here because the loop already scaned
-									// the highest line possible for any column (little optimization)
-									else if (gridData.rowsStatus[i].numOfBricks == 0)
-									{
-										//statistics update
-										//statistics update
-										//statistics update
-										updateGrid(gs, res, gridData, gridIndex, false);
-
-										for (int i = 0; i < gridData.gridColumns; i++)
-										{
-											int maxPossibleHeight = gridData.columnsStatus[i].height + atackInfo.rowsEliminatedCords.size();
-											int j = maxPossibleHeight > i + 1 ? i + 1 : maxPossibleHeight;
-											for (j; j < gridData.gridRows; j++)
-											{
-												if (grid[j][i])
-												{
-													gridData.columnsStatus[i].height = gridData.gridRows - j;
-													break;
-												}
-
-											}
-											if (j == gridData.gridRows - 1) gridData.columnsStatus[i].height = 0;
-										}
-										//statistics update
-										//statistics update
-										//statistics update
-										break;
-									}
-
-									// restores units position y before line elimination
-									for (GridCell& cell : gridData.gridUnitsData[i])
-									{
-										if (cell)
-										{
-											GameObject& u = gridData.currentBricks[cell.brickIndex].units[cell.unitNum];
-											BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-
-											uData.position.y -= eliminatedRowIndex;
-
-											BrickData& brick = gridData.currentBricks[uData.indexInCurrentBricks];
-											if (!brick.hasToUpdate)
-											{
-												gridData.bricksToUpdate.push_back(brick.indexInCurrentBricks);
-												brick.hasToUpdate = true;
-											}
-										}
-									}
-								}
-
-							}
-
-							for (int& rowIdx : rowsToUpdate)
-							{
-								RowStatistics& row = gridData.rowsStatus[rowIdx];
-
-								//checando por atack gaps
-								if (row.numOfBricks == gridData.gridColumns - 1 && row.hasToUpdate)
-								{
-									int gapXCord = 0;
-									for (gapXCord; gapXCord < gridData.gridColumns; gapXCord++)
-									{
-										if (gridData.gridUnitsData[rowIdx][gapXCord]) break;
-									}
-
-									int gapStartY = row.y;
-									int gapEndY = row.y;
-									int gapSize = 1;
-
-									for (int increment = -1; increment <= 1; increment += 2)
-									{
-
-										int yPosBeingRead = row.y + increment;
-										while (yPosBeingRead < gridData.gridRows && yPosBeingRead >= 0)
-										{
-											RowStatistics& readingRow = gridData.rowsStatus[yPosBeingRead];
-											readingRow.hasToUpdate = false;
-
-											if (readingRow.numOfBricks == gridData.gridColumns - 1)
-											{
-												if (!gridData.gridUnitsData[yPosBeingRead][gapXCord])
-												{
-													gapSize += 1;
-
-													if (increment == -1) gapStartY = yPosBeingRead;
-													else                   gapEndY = yPosBeingRead;
-												}
-												else break;
-
-											}
-											else if (readingRow.numOfBricks < gridData.gridColumns - 1) break;
-
-											yPosBeingRead += increment;
-										}
-									}
-
-									if (gapSize > 1)
-									{
-										gridData.columnsAligningConsecutiveAtackGaps.push_back(std::array<int8_t, 3>{static_cast<int8_t>(gapXCord), static_cast<int8_t>(gapStartY), static_cast<int8_t>(gapEndY)});
-									}
-								}
-
-								row.hasToUpdate = false;
-							}
-							//statistics update
-							//statistics update
-							//statistics update
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-							//DESFAZER TUUUUUUUUUUDO!!!!!!!!!!!!!!!!!!!!!
-						}
-					}
-				}
-				else
-				{
-					break;
-				}
-			}
-		}
-	}
-
-	std::sort(plays.begin(), plays.end());
-
-	std::vector<Play> choices(plays.end() - 2, plays.end());
-
-	return choices;
+#include "AI.h"
+#include "GameState.h"
+#include "gameCore.h"
+#include "brickUtils.h"
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
+// MSVC doesn't have __builtin_ctz; use _BitScanForward instead.
+#ifdef _MSC_VER
+#include <intrin.h>
+static inline int ai_ctz(unsigned x) {
+    unsigned long idx;
+    _BitScanForward(&idx, x);
+    return static_cast<int>(idx);
 }
-*/
+#else
+static inline int ai_ctz(unsigned x) { return __builtin_ctz(x); }
+#endif
+
+// ──────────────────────── Static lookup tables ────────────────────────────
+
+static AIPieceShape g_shapes[7][4];
+
+// Number of distinct rotation footprints per piece.
+// Pieces with rotational symmetry (I, S, Z, O) have fewer unique rotations.
+// Index order matches Piece enum: T=0, I=1, S=2, Z=3, J=4, L=5, O=6.
+// Entry [7] guards against nullPiece; it is never legitimately reached.
+static const int8_t g_uniqueRots[8] = { 4, 2, 2, 2, 4, 4, 1, 0 };
+
+void initAIPieceShapes() {
+    for (int p = 0; p < 7; p++) {
+        Piece piece = static_cast<Piece>(p);
+
+        // Start from the game's canonical spawn positions and apply
+        // the game's own rotation adjustments to derive every rotation state.
+        std::array<glm::ivec2, 4> pos = createStartingPos(piece);
+        auto adj = createRotationalAdjustments(piece);
+
+        for (int r = 0; r < 4; r++) {
+            int minX = 99, minY = 99, maxX = -99, maxY = -99;
+            for (auto& v : pos) {
+                if (v.x < minX) minX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y > maxY) maxY = v.y;
+            }
+
+            g_shapes[p][r].width  = static_cast<int8_t>(maxX - minX + 1);
+            g_shapes[p][r].height = static_cast<int8_t>(maxY - minY + 1);
+
+            for (int i = 0; i < 4; i++) {
+                g_shapes[p][r].cells[i][0] = static_cast<int8_t>(pos[i].x - minX);
+                g_shapes[p][r].cells[i][1] = static_cast<int8_t>(pos[i].y - minY);
+            }
+
+            // Advance positions to the next rotation state
+            if (r < 3) {
+                for (int i = 0; i < 4; i++) {
+                    pos[i] += adj[i][r];
+                }
+            }
+        }
+    }
+}
+
+// ──────────────────────── AISim: grid construction ────────────────────────
+
+AISim AISim::fromGrid(const GridData& gd) {
+    AISim sim;
+    std::fill(std::begin(sim.colTop), std::end(sim.colTop), int8_t(26));
+
+    // Exclude the active (falling) piece; it is always at the back.
+    int16_t playingIdx = static_cast<int16_t>(gd.currentBricks.size()) - 1;
+
+    for (int row = 0; row < gd.gridRows; row++) {
+        for (int col = 0; col < gd.gridColumns; col++) {
+            const GridCell& cell = gd.gridUnitsData[row][col];
+            if (cell && cell.brickIndex != playingIdx) {
+                sim.rows[row] |= (1u << col);
+                if (row < sim.colTop[col])
+                    sim.colTop[col] = static_cast<int8_t>(row);
+            }
+        }
+    }
+    return sim;
+}
+
+// ──────────────────────── AISim: landing row ──────────────────────────────
+
+int AISim::calcLandingRow(const AIPieceShape& shape, int colOffset) const {
+    // For each column that the piece touches, find the maximum row offset
+    // (the bottommost cell in that column within the piece's bounding box).
+    int8_t maxDr[10];
+    std::fill(std::begin(maxDr), std::end(maxDr), int8_t(-1));
+    int8_t maxDrOverall = -1;
+
+    for (int i = 0; i < 4; i++) {
+        int    col = colOffset + shape.cells[i][0];
+        int8_t dr  = shape.cells[i][1];
+        if (dr > maxDr[col])     maxDr[col]     = dr;
+        if (dr > maxDrOverall)   maxDrOverall    = dr;
+    }
+
+    // Floor constraint: the piece's bottom edge must not exceed row 25.
+    int landing = 25 - maxDrOverall;
+
+    // Stack constraint: for every column the piece occupies, the piece must
+    // land above the topmost occupied cell in that column.
+    for (int col = 0; col < 10; col++) {
+        if (maxDr[col] < 0) continue;
+        int constraint = static_cast<int>(colTop[col]) - maxDr[col] - 1;
+        if (constraint < landing) landing = constraint;
+    }
+
+    // Negative landing means the stack is too high for this placement.
+    return landing;
+}
+
+// ──────────────────────── AISim: piece placement ──────────────────────────
+
+int AISim::place(const AIPieceShape& shape, int colOffset) {
+    int landing = calcLandingRow(shape, colOffset);
+    if (landing < 0) return -1;
+
+    // Place all four cells and update the per-column top pointer.
+    for (int i = 0; i < 4; i++) {
+        int col = colOffset + shape.cells[i][0];
+        int row = landing    + shape.cells[i][1];
+        rows[row] |= (1u << col);
+        if (row < colTop[col])
+            colTop[col] = static_cast<int8_t>(row);
+    }
+
+    // Clear full rows by compacting: iterate from the bottom upward,
+    // skipping full rows and writing non-full rows downward.
+    constexpr uint32_t FULL_ROW = (1u << 10) - 1u;
+    int linesCleared = 0;
+    int writeRow = 25;
+
+    for (int readRow = 25; readRow >= 0; readRow--) {
+        if (rows[readRow] == FULL_ROW) {
+            linesCleared++;
+        } else {
+            rows[writeRow--] = rows[readRow];
+        }
+    }
+    while (writeRow >= 0) rows[writeRow--] = 0u;
+
+    // Rebuild per-column top pointers only when the row layout changed.
+    if (linesCleared > 0) {
+        std::fill(std::begin(colTop), std::end(colTop), int8_t(26));
+        for (int row = 0; row < 26; row++) {
+            uint32_t rowBits = rows[row];
+            while (rowBits) {
+                int col = ai_ctz(rowBits); // position of lowest set bit
+                rowBits &= rowBits - 1;
+                if (colTop[col] == 26)
+                    colTop[col] = static_cast<int8_t>(row);
+            }
+        }
+    }
+
+    return linesCleared;
+}
+
+// ──────────────────────── AISim: position evaluation ─────────────────────
+
+float AISim::evaluate(const AIWeights& w, int linesCleared) const {
+    int heights[10] = {};
+    int aggregate   = 0;
+    int maxH        = 0;
+
+    for (int col = 0; col < 10; col++) {
+        heights[col] = (colTop[col] < 26) ? (26 - colTop[col]) : 0;
+        aggregate   += heights[col];
+        if (heights[col] > maxH) maxH = heights[col];
+    }
+
+    // Count holes: empty cells that have at least one filled cell above them
+    // in the same column.
+    int holes = 0;
+    for (int col = 0; col < 10; col++) {
+        if (colTop[col] >= 26) continue;
+        for (int row = colTop[col] + 1; row < 26; row++) {
+            if (!((rows[row] >> col) & 1)) holes++;
+        }
+    }
+
+    // Bumpiness: sum of absolute height differences between adjacent columns.
+    int bumpiness = 0;
+    for (int col = 0; col < 9; col++) {
+        bumpiness += std::abs(heights[col] - heights[col + 1]);
+    }
+
+    return w.aggregateHeight * static_cast<float>(aggregate)
+         + w.linesCleared    * static_cast<float>(linesCleared)
+         + w.holes           * static_cast<float>(holes)
+         + w.bumpiness       * static_cast<float>(bumpiness)
+         + w.maxHeight       * static_cast<float>(maxH);
+}
+
+// ──────────────────────── Beam search helpers ─────────────────────────────
+
+static void beginSearch(AISearch& s, const GridData& gd) {
+    s.phase   = AIPhase::Searching;
+    s.depth   = 0;
+    s.nodeIdx = 0;
+    s.rotIdx  = 0;
+    s.colIdx  = 0;
+    s.nextBeam.clear();
+
+    // Current piece and look-ahead queue
+    s.pieces[0]  = gd.currentBricks.back().shape;
+    int queueSz  = static_cast<int>(gd.nextBricks.size());
+    s.numPieces  = std::min(s.maxDepth + 1, queueSz + 1);
+
+    for (int i = 1; i < s.numPieces; i++) {
+        int idx      = (gd.rotationIndexNextBricks + (i - 1)) % queueSz;
+        s.pieces[i]  = gd.nextBricks[idx];
+    }
+
+    // Seed the beam with the current (empty of new placements) grid state.
+    s.beam.clear();
+    AINode seed;
+    seed.sim      = AISim::fromGrid(gd);
+    seed.score    = 0.f;
+    seed.firstRot = -1;
+    seed.firstCol = -1;
+    s.beam.push_back(std::move(seed));
+}
+
+// Prune nextBeam to beamWidth, replace beam, advance depth.
+// Returns false when the search is complete.
+static bool advanceBeam(AISearch& s) {
+    s.depth++;
+    s.nodeIdx = 0;
+    s.rotIdx  = 0;
+    s.colIdx  = 0;
+
+    if (!s.nextBeam.empty()) {
+        int keep = std::min(static_cast<int>(s.nextBeam.size()), s.beamWidth);
+        std::partial_sort(
+            s.nextBeam.begin(), s.nextBeam.begin() + keep, s.nextBeam.end(),
+            [](const AINode& a, const AINode& b) { return a.score > b.score; });
+        s.nextBeam.resize(keep);
+        s.beam     = std::move(s.nextBeam);
+        s.nextBeam.clear();
+    }
+
+    // Finish if we've covered all look-ahead pieces, or if no moves exist.
+    if (s.depth == s.numPieces || s.beam.empty()) {
+        int best = -1;
+        for (int i = 0; i < static_cast<int>(s.beam.size()); i++) {
+            if (s.beam[i].firstRot >= 0) {
+                if (best < 0 || s.beam[i].score > s.beam[best].score)
+                    best = i;
+            }
+        }
+        s.bestRot = (best >= 0) ? s.beam[best].firstRot : -1;
+        s.bestCol = (best >= 0) ? s.beam[best].firstCol : -1;
+        s.phase   = AIPhase::WaitToPlay;
+        return false;
+    }
+
+    return true;
+}
+
+// Evaluate one candidate placement (one "work unit").
+// Returns true while the search is ongoing, false when it finishes.
+static bool searchStep(AISearch& s, const AIWeights& w) {
+    if (s.phase != AIPhase::Searching) return false;
+
+    int pieceIdx = static_cast<int>(s.pieces[s.depth]);
+    if (pieceIdx < 0 || pieceIdx > 6) return advanceBeam(s); // nullPiece guard
+    int numRots  = g_uniqueRots[pieceIdx];
+
+    while (s.nodeIdx < static_cast<int>(s.beam.size())) {
+        const AINode& parent = s.beam[s.nodeIdx];
+
+        while (s.rotIdx < numRots) {
+            const AIPieceShape& shape = g_shapes[pieceIdx][s.rotIdx];
+            int maxCol = 10 - shape.width;
+
+            while (s.colIdx <= maxCol) {
+                int col = s.colIdx++;
+
+                // Skip placements where the stack is already too high.
+                if (parent.sim.calcLandingRow(shape, col) < 0) continue;
+
+                AISim childSim = parent.sim;
+                int lines      = childSim.place(shape, col);
+
+                AINode child;
+                child.sim   = std::move(childSim);
+                child.score = child.sim.evaluate(w, lines);
+                child.firstRot = (s.depth == 0)
+                    ? static_cast<int8_t>(s.rotIdx) : parent.firstRot;
+                child.firstCol = (s.depth == 0)
+                    ? static_cast<int8_t>(col)      : parent.firstCol;
+
+                s.nextBeam.push_back(std::move(child));
+                return true; // one unit of work done; resume next call
+            }
+
+            s.colIdx = 0;
+            s.rotIdx++;
+        }
+
+        s.rotIdx = 0;
+        s.nodeIdx++;
+    }
+
+    return advanceBeam(s);
+}
+
+// ──────────────────────── Move execution ──────────────────────────────────
+
+static void executeMove(GameState& gs, Resources& res, GridData& gd,
+                        size_t gridIndex, int8_t targetRot, int8_t targetCol)
+{
+    if (gd.currentBricks.empty()) return;
+    BrickData& playing = gd.currentBricks.back();
+    if (playing.state == BrickState::solid) return;
+
+    // 1. Rotate to the target rotation state.
+    int numRot = (static_cast<int>(targetRot) - playing.rotationState + 4) % 4;
+    for (int i = 0; i < numRot; i++) {
+        updateBrickPositionRotation(playing, gd, 1, true);
+    }
+
+    // 2. Find the current leftmost column of the piece after rotation.
+    int minX = gd.gridColumns; // start above the max valid index
+    for (const auto& u : playing.units) {
+        int x = gd.currentUnits[u.specificDataLocation].position.x;
+        if (x < minX) minX = x;
+    }
+
+    // 3. Slide the piece to the target column.
+    int dx  = static_cast<int>(targetCol) - minX;
+    int dir = (dx > 0) ? 1 : -1;
+    for (int i = 0; i < std::abs(dx); i++) {
+        // Stop early if a wall or stack blocks further movement.
+        if (!updateBrickPositionTranslational(playing, gd, glm::ivec2(dir, 0), true))
+            break;
+    }
+
+    // 4. Hard-drop to the landing row.
+    int fall = getbiggestYFallForBrick(playing, gd);
+    if (fall > 0) {
+        updateBrickPositionTranslational(playing, gd, glm::ivec2(0, fall), true);
+    }
+
+    // 5. Lock the piece, clear full lines, and spawn the next piece.
+    // Note: createPlayingBrick (called internally) resets gs.fallLockInTimer
+    // and gs.coutingLockIn, which are currently shared across all grids.
+    // This is a pre-existing design limitation; it has no effect on the
+    // player grid in practice because both fields are only acted upon for
+    // grid index 0 inside the player lock-in logic.
+    playingPieceDropped(gs, res, gd, gridIndex);
+}
+
+// ──────────────────────── Per-frame AI entry point ────────────────────────
+
+void AIUpdate(GameState& gs, Resources& res, size_t gridIndex, float deltaTime) {
+    AIPlayer& ai = gs.IAs[gridIndex - 1];
+    AISearch& s  = ai.search;
+    GridData& gd = gs.grids[gridIndex];
+
+    if (gd.currentBricks.empty()) return;
+
+    // Detect a newly spawned piece and restart the search.
+    uint32_t currentId = gd.currentBricks.back().brickId;
+    if (currentId != s.lastId) {
+        s.lastId = currentId;
+        beginSearch(s, gd);
+    }
+
+    // ── Phase: spread search work across frames ────────────────────────────
+    if (s.phase == AIPhase::Searching) {
+        for (int i = 0; i < ai.workBudgetPerFrame; i++) {
+            if (!searchStep(s, ai.weights)) break;
+        }
+    }
+
+    // ── Phase: wait before committing to the move ─────────────────────────
+    if (s.phase == AIPhase::WaitToPlay) {
+        ai.playIntervalTimer.step(deltaTime);
+        if (ai.playIntervalTimer.isTimedOut()) {
+            ai.playIntervalTimer.reset();
+            s.phase = AIPhase::Executing;
+        }
+    }
+
+    // ── Phase: apply the chosen move ──────────────────────────────────────
+    if (s.phase == AIPhase::Executing) {
+        if (s.bestRot >= 0 && s.bestCol >= 0) {
+            executeMove(gs, res, gd, gridIndex, s.bestRot, s.bestCol);
+        } else {
+            // Fallback when no valid placement was found (near game-over).
+            BrickData& playing = gd.currentBricks.back();
+            int fall = getbiggestYFallForBrick(playing, gd);
+            if (fall > 0)
+                updateBrickPositionTranslational(playing, gd, glm::ivec2(0, fall), true);
+            playingPieceDropped(gs, res, gd, gridIndex);
+        }
+        // New piece is now at the back of currentBricks; the next AIUpdate
+        // call will detect the brickId change and restart the search.
+        s.phase = AIPhase::Idle;
+    }
+}

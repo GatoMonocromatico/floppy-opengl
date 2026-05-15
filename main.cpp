@@ -60,6 +60,9 @@ int main(int argc, char* argv[])
 	//setup game data
 	GameState gs(res);
 
+	// Build piece-shape lookup table used by the AI before the game loop.
+	initAIPieceShapes();
+
 	for (size_t i = 0; i < gs.numOfGrids; i++)
 	{
 		createPlayingBrick(gs, res, gs.grids[i].currentBricks, i, gs.grids[i].nextBricks[0]);
@@ -265,6 +268,8 @@ int main(int argc, char* argv[])
 
 			if (i > 0)
 			{
+				// Run AI analysis (incremental) and execute moves when ready.
+				AIUpdate(gs, res, i, deltaTime);
 				updateGrid(gs, res, gs.grids[i], i, true);
 			}
 			else
