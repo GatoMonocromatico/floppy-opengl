@@ -368,7 +368,7 @@ FodyWeavers.xsd
 .vcxproj
 .tmp.driveupload/
 Tetris-r.b67faa2d/
-/Textures
+/assets/textures
 .vs/
 *.vcxproj.user
 *.VC.db

@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+set(SRC_DIR "${PROJECT_ROOT}/src")
 set(LOCAL_LIBRARIES_DIR "${PROJECT_ROOT}/Libraries")
 set(LOCAL_INCLUDE_DIR "${LOCAL_LIBRARIES_DIR}/include")
 
@@ -23,29 +24,29 @@ if(NOT EXISTS "${LOCAL_INCLUDE_DIR}" OR NOT EXISTS "${LOCAL_LIB_DIR}")
 endif()
 
 add_executable(tetris_roguelike
-    main.cpp
-    AI.cpp
-    brickUtils.cpp
-    camera.cpp
-    EBO.cpp
-    gameCore.cpp
-    gameObject.cpp
-    GameState.cpp
-    mathUtils.cpp
-    Mesh.cpp
-    point.cpp
-    Resources.cpp
-    RoundedCorner2D.cpp
-    shaderClass.cpp
-    texture.cpp
-    VAO.cpp
-    VBO.cpp
-    glad.c
+    src/main.cpp
+    src/glad.c
+    src/game/AI.cpp
+    src/game/brickUtils.cpp
+    src/game/gameCore.cpp
+    src/game/gameObject.cpp
+    src/game/GameState.cpp
+    src/game/Resources.cpp
+    src/render/camera.cpp
+    src/render/EBO.cpp
+    src/render/Mesh.cpp
+    src/render/point.cpp
+    src/render/RoundedCorner2D.cpp
+    src/render/shaderClass.cpp
+    src/render/texture.cpp
+    src/render/VAO.cpp
+    src/render/VBO.cpp
+    src/util/mathUtils.cpp
 )
 
 target_include_directories(tetris_roguelike
     PRIVATE
-        "${PROJECT_ROOT}"
+        "${SRC_DIR}"
         "${LOCAL_INCLUDE_DIR}"
 )
 
