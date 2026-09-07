@@ -20,7 +20,7 @@
 
 #include"animation.h"
 #include"Mesh.h"
-#include"Point.h"
+#include "point.h"
 #include"Light.h"
 #include "brickUtils.h"
 #include"Resources.h"

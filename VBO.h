@@ -1,5 +1,11 @@
 #pragma once
+// -----------------------------------------------------------------------------
+// VBO.h — Vertex Buffer Object: raw vertex data on the GPU
+// -----------------------------------------------------------------------------
+// GL_ARRAY_BUFFER is interpreted according to the active VAO's vertex attrib
+// pointers (see VAO::LinkAttrib). Vertex matches the layout expected by Mesh.
 
+#include "DebugLog.h"
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
@@ -17,7 +23,7 @@ struct Vertex
 		position(position),
 		normal(normal),
 		color(glm::vec3(1.0f, 1.0f, 1.0f)),
-		texUV(texUV) 
+		texUV(texUV)
 	{}*/
 };
 

@@ -1,11 +1,19 @@
-#include"texture.h"
+#include "texture.h"
+#include "DebugLog.h"
+#include <stdexcept>
+#include <string>
 
 Texture::Texture(const char* image, const char* texType, GLenum slot, GLenum format, GLenum pixelType)
 {
 	type = texType;
 	this->slot = slot;
 	SDL_Surface* surface = IMG_Load(image);
-	//SDL_Surface* surface = IMG_Load("Textures/teste.png");
+	if (!surface)
+	{
+		throw std::runtime_error(
+			std::string("Texture load failed for '") + image + "': " + SDL_GetError()
+		);
+	}
 
 	glGenTextures(1, &ID);
 	glActiveTexture(slot);
@@ -16,11 +24,13 @@ Texture::Texture(const char* image, const char* texType, GLenum slot, GLenum for
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+	// GPU-side image storage: internal format GL_RGBA matches common PNGs from SDL_image.
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface->w, surface->h, 0, GL_RGBA, pixelType, surface->pixels);
 	glGenerateMipmap(GL_TEXTURE_2D);
 
 	SDL_DestroySurface(surface);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	MDBG(DBG_N("phase", "Texture loaded"), DBG_N("path", image), DBG_N("slot", static_cast<unsigned int>(slot)));
 }
 
 void Texture::texUnit(Shader& shader, const char* uniform, GLuint unit)

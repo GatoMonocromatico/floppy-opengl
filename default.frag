@@ -1,4 +1,9 @@
 #version 330 core
+// -----------------------------------------------------------------------------
+// default.frag — textured surface with mask alpha and multi-light accumulation
+// -----------------------------------------------------------------------------
+// std140 blocks must match C++ Light layout and binding points set from CPU.
+
 out vec4 FragColor;
 in vec2 texCoord;
 in vec2 texCoordMask;
@@ -6,8 +11,8 @@ in vec3 normal;
 in vec3 FragPos;
 in float ambientLight;
 
-uniform sampler2D tex0; 
-uniform sampler2D mask0; 
+uniform sampler2D tex0;
+uniform sampler2D mask0;
 
 struct Light
 {
@@ -47,7 +52,7 @@ void main()
       diffuseLight += scenarioLights[i].color.rgb *
                  scenarioLights[i].intensity.r *
                  max(dot(N1, lightDirect), 0) / dot(lightVector * 0.8, lightVector);
-       
+
       vec3 viewDirect = normalize(scenarioLights[1].position.xyz - FragPos);
       vec3 reflectionDirect = reflect(-lightDirect, N1);
       specularLight += pow(max(dot(viewDirect, reflectionDirect), 0.0), 32);
@@ -61,7 +66,7 @@ void main()
       diffuseLight += brickLights[j].color.rgb *
                  brickLights[j].intensity.r *
                  max(dot(N1, lightDirect), 0) / dot(lightVector * 0.8, lightVector);
-       
+
       vec3 viewDirect = normalize(scenarioLights[1].position.xyz - FragPos);
       vec3 reflectionDirect = reflect(-lightDirect, N1);
       specularLight += pow(max(dot(viewDirect, reflectionDirect), 0.0), 32);

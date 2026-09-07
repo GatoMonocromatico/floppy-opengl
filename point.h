@@ -1,10 +1,16 @@
 #pragma once
+// -----------------------------------------------------------------------------
+// point.h — minimal geometry path for GL_POINTS (debug markers, particles, etc.)
+// -----------------------------------------------------------------------------
+// Uses the same Vertex layout as meshes so attribute locations stay consistent,
+// but drawing is glDrawArrays(GL_POINTS) instead of indexed triangles.
 
-#include<string>
-#include"VAO.h"
-#include"EBO.h"
-#include"Camera.h"
-#include"texture.h"
+#include "DebugLog.h"
+#include <string>
+#include "VAO.h"
+#include "EBO.h"
+#include "camera.h"
+#include "texture.h"
 
 class Point
 {

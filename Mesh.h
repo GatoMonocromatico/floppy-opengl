@@ -3,7 +3,7 @@
 #include<string>
 #include"VAO.h"
 #include"EBO.h"
-#include"Camera.h"
+#include "camera.h"
 #include"texture.h"
 
 class Mesh

@@ -1,4 +1,11 @@
 #pragma once
+// -----------------------------------------------------------------------------
+// Light.h — CPU mirror of GLSL Light in default.frag (std140 layout)
+// -----------------------------------------------------------------------------
+// Keep field order and vec4 packing in sync with your uniform blocks; the GPU
+// version is the source of truth for padding rules.
+
+#include "DebugLog.h"
 #include <glm/glm.hpp>
 
 struct Light

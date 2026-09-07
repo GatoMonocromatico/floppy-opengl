@@ -1,4 +1,7 @@
-#include"shaderClass.h"
+#include "shaderClass.h"
+#include "DebugLog.h"
+#include <stdexcept>
+#include <cstring>
 
 std::string getFileContents(const char* filename)
 {
@@ -13,7 +16,12 @@ std::string getFileContents(const char* filename)
 		in.close();
 		return(contents);
 	}
-	throw(errno);
+	const int err = errno;
+	const char* errMsg = std::strerror(err);
+	throw std::runtime_error(
+		std::string("Failed to read shader file '") + filename + "': " +
+		(errMsg ? errMsg : "unknown I/O error")
+	);
 }
 
 Shader::Shader(const char* vertexFile, const char* fragmentFile)
@@ -24,6 +32,7 @@ Shader::Shader(const char* vertexFile, const char* fragmentFile)
 	const char* fragmentSource = fragmentCode.c_str();
 
 	GLuint vertexShader, fragmentShader;
+	// Compile vertex stage (runs once per vertex).
 	vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, &vertexSource, NULL);
 	glCompileShader(vertexShader);
@@ -33,8 +42,12 @@ Shader::Shader(const char* vertexFile, const char* fragmentFile)
 	if (!success)
 	{
 		glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+		std::string errorMsg = std::string("Vertex shader compilation failed for '") + vertexFile + "':\n" + infoLog;
+		std::cerr << errorMsg << std::endl;
+		glDeleteShader(vertexShader);
+		throw std::runtime_error(errorMsg);
 	}
+	// Compile fragment stage (runs once per rasterized pixel/sample).
 	fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
 	glCompileShader(fragmentShader);
@@ -42,8 +55,13 @@ Shader::Shader(const char* vertexFile, const char* fragmentFile)
 	if (!success)
 	{
 		glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+		std::string errorMsg = std::string("Fragment shader compilation failed for '") + fragmentFile + "':\n" + infoLog;
+		std::cerr << errorMsg << std::endl;
+		glDeleteShader(vertexShader);
+		glDeleteShader(fragmentShader);
+		throw std::runtime_error(errorMsg);
 	}
+	// Link into a program: matches in/out varyings must line up between stages.
 	ID = glCreateProgram();
 	glAttachShader(ID, vertexShader);
 	glAttachShader(ID, fragmentShader);
@@ -52,10 +70,17 @@ Shader::Shader(const char* vertexFile, const char* fragmentFile)
 	if (!success)
 	{
 		glGetProgramInfoLog(ID, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+		std::string errorMsg = std::string("Shader program linking failed (") + vertexFile + " + " + fragmentFile + "):\n" + infoLog;
+		std::cerr << errorMsg << std::endl;
+		glDeleteProgram(ID);
+		glDeleteShader(vertexShader);
+		glDeleteShader(fragmentShader);
+		throw std::runtime_error(errorMsg);
 	}
+	// Detach/delete shaders after link; the program keeps the compiled code.
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
+	MDBG(DBG_N("phase", "Shader linked"), DBG_N("vertexFile", vertexFile), DBG_N("fragmentFile", fragmentFile), DBG_N("program_id", ID));
 }
 
 void Shader::Activate()

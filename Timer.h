@@ -1,10 +1,17 @@
 #pragma once
+// -----------------------------------------------------------------------------
+// Timer.h — small repeating interval flag (used for FPS counting and animation)
+// -----------------------------------------------------------------------------
+// step() accumulates time; when it crosses `length`, timedOut becomes true until
+// reset()/restart(). Animation uses restart() to advance frames.
+
+#include "DebugLog.h"
 
 class Timer {
 	float time, length;
 	bool timedOut, startTimedOut;
 public:
-	Timer() : time(0.0f), length(0.2f), timedOut(false)
+	Timer() : time(0.0f), length(0.2f), timedOut(false), startTimedOut(false)
 	{
 	}
 	Timer(float length, bool timedOutStartingState = false) : time(0), length(length), startTimedOut(timedOutStartingState)

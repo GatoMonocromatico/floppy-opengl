@@ -1,4 +1,7 @@
 #version 330 core
+// -----------------------------------------------------------------------------
+// point.frag — solid color for each point (replace with a circular SDF, etc.)
+// -----------------------------------------------------------------------------
 
 out vec4 FragColor;
 

@@ -1,9 +1,11 @@
 #define GLM_ENABLE_EXPERIMENTAL
-#include"point.h"
+#include "point.h"
+#include "DebugLog.h"
 
 
 void Point::Draw(Shader& shader, Camera& camera)
 {
+	MDBG("phase", "Point::Draw");
 	shader.Activate();
 	VAO1.Bind();
 
@@ -11,6 +13,7 @@ void Point::Draw(Shader& shader, Camera& camera)
 
 	glUniformMatrix4fv(glGetUniformLocation(shader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
 
+	// One draw call issues `vertices.size()` points; point size comes from the vertex shader.
 	glDrawArrays(GL_POINTS, 0, vertices.size());
 }
 
@@ -22,7 +25,9 @@ Point::Point(std::vector<Vertex>& verts, glm::vec3 model) :
 {
 	VAO1.Bind();
 
+	VBO1.createVBO(vertices);
 
+	// Same stride/offsets as Mesh so one mental model for attribute packing.
 	VAO1.LinkAttrib(VBO1, 0, 3, GL_FLOAT, sizeof(Vertex), (void*)0);
 	VAO1.LinkAttrib(VBO1, 1, 3, GL_FLOAT, sizeof(Vertex), (void*)(3 * sizeof(float)));
 	VAO1.LinkAttrib(VBO1, 2, 2, GL_FLOAT, sizeof(Vertex), (void*)(6 * sizeof(float)));

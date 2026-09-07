@@ -386,3 +386,12 @@ x64/
 *.idb
 *.exe
 .tmp.driveupload/
+
+# --- Cross-platform CMake build (Linux/Windows) ---
+/build/
+/build-release/
+/bin/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json

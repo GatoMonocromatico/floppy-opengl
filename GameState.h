@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Timer.h"
-#include "GameObject.h"
+#include "gameObject.h"
 #include "Resources.h"
 #include <random>
 #include "AI.h"
