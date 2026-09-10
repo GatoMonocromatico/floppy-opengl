@@ -1,6 +1,7 @@
 #pragma once
 
 #include<string>
+#include "util/StdAliases.h"
 #include "render/VAO.h"
 #include "render/EBO.h"
 #include "render/camera.h"

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <utility>
 
 namespace flux::detail {
@@ -87,6 +88,16 @@ void mdbgEmitLine(const char* file, Args&&... args)
 
 } // namespace flux::detail
 
+namespace flux {
+
+// Single global switch for all DBG_IF/MDBG_IF call sites. Flip it (e.g. in main()) to
+// silence or re-enable debug output at runtime without touching call sites. Declared
+// unconditionally so it compiles in every build config, even though it has no effect
+// outside DEBUG builds (DBG_IF/MDBG_IF compile out entirely there).
+inline bool verbose = true;
+
+} // namespace flux
+
 #ifdef DEBUG
 
 #define FLUX_DBG_PP_CAT(a, b) a##b
@@ -140,3 +151,49 @@ void mdbgEmitLine(const char* file, Args&&... args)
 #define MDBG_IF(cond, ...) ((void)0)
 
 #endif
+
+// =============================================================================
+// Game-dependent extensions — everything below this line assumes grid-shaped
+// game state. Strip this block (down to the matching "end" marker) if reusing
+// this file as a generic OpenGL-quickstart base with no such state.
+// =============================================================================
+
+#ifdef DEBUG
+
+namespace flux::detail {
+
+// Step: prints any grid-shaped object's occupancy as rows of '0'/'1' (row y, then column x).
+// Duck-typed on gridRows, gridColumns, gridUnitsData[y][x] (bool-convertible) so this header
+// never needs to depend on the concrete grid type's definition.
+template<typename GridT>
+void dbgGrid(const char* file, const GridT& gridData)
+{
+	std::string rows;
+	for (int y = 0; y < gridData.gridRows; y++)
+	{
+		for (int x = 0; x < gridData.gridColumns; x++)
+		{
+			rows += gridData.gridUnitsData[y][x] ? '1' : '0';
+		}
+		rows += '\n';
+	}
+	dbgFilePrefix(std::cerr, file) << rows << std::endl;
+}
+
+} // namespace flux::detail
+
+#define DBGGRID(gridData) ::flux::detail::dbgGrid(__FILE__, (gridData))
+
+#define DBGGRID_IF(cond, gridData) \
+	do { if (cond) { DBGGRID(gridData); } } while (0)
+
+#else
+
+#define DBGGRID(...) ((void)0)
+#define DBGGRID_IF(...) ((void)0)
+
+#endif
+
+// =============================================================================
+// End of game-dependent extensions
+// =============================================================================

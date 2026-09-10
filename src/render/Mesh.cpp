@@ -1,5 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "render/Mesh.h"
+#include "util/DebugLog.h"
 
 Mesh::Mesh(std::vector<Vertex>& verts, std::vector<GLuint>& indxs, std::vector<Texture> textures, glm::vec3 model) :
 	vertices(verts),
@@ -45,7 +46,7 @@ void Mesh::createNormals()
 	1 -> same normal	  [0] -> 1 repeated vertex
 						  [1] -> 2 repeated vertexes
 	*/
-	std::vector<std::vector<std::vector<GLuint>>> idxTrianglesRepeating;
+	stdCube<GLuint> idxTrianglesRepeating;
 	idxTrianglesRepeating.resize(2);
 	idxTrianglesRepeating[0].resize(2);
 	idxTrianglesRepeating[1].resize(2);
@@ -85,7 +86,7 @@ void Mesh::createNormals()
 
 			if (numRepeatedVertices > 2)
 			{
-				std::cout << "Error: More than 2 repeated vertices in triangle, can't calculate normal" << std::endl;
+				DBG_IF(flux::verbose, "Error: More than 2 repeated vertices in triangle, can't calculate normal");
 			}
 			else if (numRepeatedVertices != 0)
 			{
@@ -108,15 +109,9 @@ void Mesh::createNormals()
 					{
 						if (indices[readIndex + j] == indices[idxTrianglesRepeating[0][numRepeatVertex][J1] + k])
 						{
-							//std::cout << numRepeatVertex << " rep" << std::endl;
-							//std::cout << indices[readIndex + j] << std::endl;
-
 							vertices.push_back(vertices[indices[readIndex + j]]);
 							indicesToChange.push_back(indices[readIndex + j]);
 							indices[readIndex + j] = vertices.size() - 1;
-
-							//std::cout << indices[readIndex + j] << std::endl;
-
 						}
 					}
 				}
@@ -151,16 +146,7 @@ void Mesh::createNormals()
 		readIndex += 3;
 	}
 
-	std::cout << "vertices: " << vertices.size() << std::endl;
-
-	/*for (int i = 0; i < indices.size(); i++)
-	{
-		std::cout << vertices[indices[i]].normal.x << ", " << vertices[indices[i]].normal.y << ", " << vertices[indices[i]].normal.z << "\n";
-		i += 1;
-		std::cout << vertices[indices[i]].normal.x << ", " << vertices[indices[i]].normal.y << ", " << vertices[indices[i]].normal.z << "\n";
-		i += 1;
-		std::cout << vertices[indices[i]].normal.x << ", " << vertices[indices[i]].normal.y << ", " << vertices[indices[i]].normal.z << "\n\n";
-	}*/
+	DBG_IF(flux::verbose, "vertices", vertices.size());
 }
 
 void Mesh::Draw(Shader& shader, Camera& camera, glm::mat4 objectModel)
@@ -194,9 +180,12 @@ void Mesh::Draw(Shader& shader, Camera& camera, glm::mat4 objectModel)
 }
 
 void Mesh::updateInstanceVBO(std::vector<float>& data)
-{
+{	
+	DBG_IF(flux::verbose, "BINDING VBO");
 	VBOInstances.Bind();
+	DBG_IF(flux::verbose, "BUFFERING DATA");
 	glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STREAM_DRAW);
+	DBG_IF(flux::verbose, "UNBINDING VBO");
 	VBOInstances.Unbind();
 }
 

@@ -18,8 +18,7 @@ namespace geometry2d
 		std::vector<GLuint>& indices,
 		GLuint cornerVertexIndex,
 		float shortenDistance,
-		int roundLineCount,
-		bool verbose = false
+		int roundLineCount
 	);
 
 	struct parametricDescription{
@@ -53,7 +52,7 @@ namespace geometry2d
 			}
 			else
 			{
-				DBG("opa");
+				DBG_IF(flux::verbose, "opa");
 				parametricEquations[1].constant = (direction.y / (double) direction.x) * EndPoint1.position.x - EndPoint1.position.y;
 			}
 

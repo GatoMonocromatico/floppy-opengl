@@ -80,7 +80,7 @@ Shader::Shader(const char* vertexFile, const char* fragmentFile)
 	// Detach/delete shaders after link; the program keeps the compiled code.
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
-	MDBG(DBG_N("phase", "Shader linked"), DBG_N("vertexFile", vertexFile), DBG_N("fragmentFile", fragmentFile), DBG_N("program_id", ID));
+	MDBG_IF(flux::verbose, DBG_N("phase", "Shader linked"), DBG_N("vertexFile", vertexFile), DBG_N("fragmentFile", fragmentFile), DBG_N("program_id", ID));
 }
 
 void Shader::Activate()

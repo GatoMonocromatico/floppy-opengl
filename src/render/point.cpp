@@ -5,7 +5,7 @@
 
 void Point::Draw(Shader& shader, Camera& camera)
 {
-	MDBG("phase", "Point::Draw");
+	MDBG_IF(flux::verbose, DBG_N("phase", "Point::Draw"));
 	shader.Activate();
 	VAO1.Bind();
 

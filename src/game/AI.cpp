@@ -70,13 +70,13 @@ AISim AISim::fromGrid(const GridData& gd) {
     AISim sim;
     std::fill(std::begin(sim.colTop), std::end(sim.colTop), int8_t(26));
 
-    // Exclude the active (falling) piece; it is always at the back.
-    int16_t playingIdx = static_cast<int16_t>(gd.currentBricks.size()) - 1;
+    // Exclude the active (falling) piece.
+    int16_t playingIdx = static_cast<int16_t>(gd.playingBrickHandle);
 
     for (int row = 0; row < gd.gridRows; row++) {
         for (int col = 0; col < gd.gridColumns; col++) {
             const GridCell& cell = gd.gridUnitsData[row][col];
-            if (cell && cell.brickIndex != playingIdx) {
+            if (cell && gd.currentUnits[cell.unitHandle].indexInCurrentBricks != playingIdx) {
                 sim.rows[row] |= (1u << col);
                 if (row < sim.colTop[col])
                     sim.colTop[col] = static_cast<int8_t>(row);
@@ -211,7 +211,7 @@ static void beginSearch(AISearch& s, const GridData& gd) {
     s.nextBeam.clear();
 
     // Current piece and look-ahead queue
-    s.pieces[0]  = gd.currentBricks.back().shape;
+    s.pieces[0]  = gd.playingBrick().shape;
     int queueSz  = static_cast<int>(gd.nextBricks.size());
     s.numPieces  = std::min(s.maxDepth + 1, queueSz + 1);
 
@@ -293,7 +293,12 @@ static bool searchStep(AISearch& s, const AIWeights& w) {
 
                 AINode child;
                 child.sim   = std::move(childSim);
-                child.score = child.sim.evaluate(w, lines);
+                // Accumulate the line reward down the path and add the board eval of
+                // this node only. Previously score was overwritten at every depth, so
+                // a line cleared at depth 0 was invisible in the final score and the
+                // search would happily discard clears.
+                child.clearReward = parent.clearReward + w.linesCleared * static_cast<float>(lines);
+                child.score = child.clearReward + child.sim.evaluate(w, 0);
                 child.firstRot = (s.depth == 0)
                     ? static_cast<int8_t>(s.rotIdx) : parent.firstRot;
                 child.firstCol = (s.depth == 0)
@@ -319,8 +324,8 @@ static bool searchStep(AISearch& s, const AIWeights& w) {
 static void executeMove(GameState& gs, Resources& res, GridData& gd,
                         size_t gridIndex, int8_t targetRot, int8_t targetCol)
 {
-    if (gd.currentBricks.empty()) return;
-    BrickData& playing = gd.currentBricks.back();
+    if (gd.playingBrickHandle < 0) return;
+    BrickData& playing = gd.playingBrick();
     if (playing.state == BrickState::solid) return;
 
     // 1. Rotate to the target rotation state.
@@ -367,10 +372,10 @@ void AIUpdate(GameState& gs, Resources& res, size_t gridIndex, float deltaTime) 
     AISearch& s  = ai.search;
     GridData& gd = gs.grids[gridIndex];
 
-    if (gd.currentBricks.empty()) return;
+    if (gd.playingBrickHandle < 0) return;
 
     // Detect a newly spawned piece and restart the search.
-    uint32_t currentId = gd.currentBricks.back().brickId;
+    uint32_t currentId = gd.playingBrick().brickId;
     if (currentId != s.lastId) {
         s.lastId = currentId;
         beginSearch(s, gd);
@@ -398,7 +403,7 @@ void AIUpdate(GameState& gs, Resources& res, size_t gridIndex, float deltaTime) 
             executeMove(gs, res, gd, gridIndex, s.bestRot, s.bestCol);
         } else {
             // Fallback when no valid placement was found (near game-over).
-            BrickData& playing = gd.currentBricks.back();
+            BrickData& playing = gd.playingBrick();
             int fall = getbiggestYFallForBrick(playing, gd);
             if (fall > 0)
                 updateBrickPositionTranslational(playing, gd, glm::ivec2(0, fall), true);

@@ -26,6 +26,7 @@
 #include "game/Resources.h"
 #include "game/GameState.h"
 #include "game/gameCore.h"
+#include "util/DebugLog.h"
 
 
 bool moveCamera = false;
@@ -38,6 +39,8 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 
 int main(int argc, char* argv[])
 {
+	flux::verbose = false; // flip to false to silence all debug output
+
 	SDLState state = initialize(1600, 900);
 
 	if (!state.successfullyInitialized)
@@ -48,7 +51,7 @@ int main(int argc, char* argv[])
 
 	float cameraSpeed = 2;
 
-	glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// CREATE RESORCES DATA STRUCTURE AND INITIALIZE IT HERE (GROUP TEXTURES/ANIMATIONS)
 	std::vector<Shader> shaders = { Shader("assets/shaders/default.vert", "assets/shaders/default.frag"), Shader("assets/shaders/default.vert", "assets/shaders/brickUnit.frag"), Shader("assets/shaders/point.vert", "assets/shaders/point.frag") };
@@ -65,7 +68,7 @@ int main(int argc, char* argv[])
 
 	for (size_t i = 0; i < gs.numOfGrids; i++)
 	{
-		createPlayingBrick(gs, res, gs.grids[i].currentBricks, i, gs.grids[i].nextBricks[0]);
+		createPlayingBrick(gs, res, i, gs.grids[i].nextBricks[0]);
 		stepNextBricks(gs, res, gs.grids[i], i);
 	}
 
@@ -78,10 +81,13 @@ int main(int argc, char* argv[])
 	uint64_t prevTime = SDL_GetTicks();
 	while (running)
 	{
+		DBG_IF(flux::verbose, "LOOP START");
 		uint64_t nowTime = SDL_GetTicks();
 		float deltaTime = (nowTime - prevTime) / 1000.0f;
 
 		SDL_Event event{ 0 };
+
+		// mechanic phase
 
 		while (SDL_PollEvent(&event))
 		{
@@ -116,23 +122,20 @@ int main(int argc, char* argv[])
 				break;
 			}
 			case SDL_EVENT_KEY_DOWN:
-
+				// enable camera movement
 				if (event.key.scancode == SDL_SCANCODE_O)
 				{
 					moveCamera = !moveCamera;
 					SDL_SetWindowRelativeMouseMode(state.window, moveCamera);
 				}
+				// reset camera
 				if (event.key.scancode == SDL_SCANCODE_P)
 				{
 					res.camera.yaw = -90.0f;
 					res.camera.pitch = 0.0f;
 					res.camera.orientation = glm::vec3(0.0f, 0.0f, -1.0f);
 				}
-				if (event.key.scancode == SDL_SCANCODE_DOWN)
-				{
-					res.camera.position += glm::vec3(0.0f, 0.0f, 1.00f) * cameraSpeed * deltaTime;
-					res.scenarioLights[1].position = glm::vec4(res.camera.position, 0.0f);
-				}
+				// camera movement
 				if (event.key.scancode == SDL_SCANCODE_LCTRL)
 				{
 					res.camera.position -= glm::vec3(0.0f, 1.00f, 0.0f) * cameraSpeed * deltaTime;
@@ -141,6 +144,11 @@ int main(int argc, char* argv[])
 				if (event.key.scancode == SDL_SCANCODE_LSHIFT)
 				{
 					res.camera.position += glm::vec3(0.0f, 1.00f, 0.0f) * cameraSpeed * deltaTime;
+					res.scenarioLights[1].position = glm::vec4(res.camera.position, 0.0f);
+				}
+				if (event.key.scancode == SDL_SCANCODE_DOWN)
+				{
+					res.camera.position += glm::vec3(0.0f, 0.0f, 1.00f) * cameraSpeed * deltaTime;
 					res.scenarioLights[1].position = glm::vec4(res.camera.position, 0.0f);
 				}
 				if (event.key.scancode == SDL_SCANCODE_UP)
@@ -158,21 +166,24 @@ int main(int argc, char* argv[])
 					res.camera.position -= glm::vec3(1.00f, 0.0f, 0.0f) * cameraSpeed * deltaTime;
 					res.scenarioLights[1].position = glm::vec4(res.camera.position, 0.0f);
 				}
+
+				// resets lock in position timer of piece if it is moved 
 				if (gs.coutingLockIn)
 				{
 					for (SDL_Scancode keyCode : gs.configuratedKeys.handlingKeys)
 					{
 						if (event.key.scancode == keyCode)
 						{
-							std::vector<BrickData>& currentBricks = gs.grids[0].currentBricks;
-							if (currentBricks[currentBricks.size() - 1].resets < 15)
+							BrickData& playing = gs.grids[0].playingBrick();
+							if (playing.resets < 15)
 							{
-								currentBricks[currentBricks.size() - 1].resets += 1;
+								playing.resets += 1;
 								gs.fallLockInTimer.reset();
 							}
 						}
 					}
 				}
+				// eventic piece handling
 				if (event.key.scancode == gs.configuratedKeys.softDrop)
 				{
 					gs.gravityTimer.updateLengthMeasure(0.02f);
@@ -180,7 +191,6 @@ int main(int argc, char* argv[])
 				if (event.key.scancode == gs.configuratedKeys.reserve)
 				{
 					GridData& gridData = gs.grids[0];
-
 					Piece toBeCreatedPiece;
 					Piece& reservedBrick = gridData.reservedBrick;
 					std::vector<BrickData>& currentBricks = gridData.currentBricks;
@@ -195,37 +205,49 @@ int main(int argc, char* argv[])
 						toBeCreatedPiece = reservedBrick;
 					}
 
+					stdMat<GridCell>& grid = gridData.gridUnitsData;
+					BrickData& heldBrick = gridData.playingBrick();
+					reservedBrick = heldBrick.shape;
 
-					reservedBrick = currentBricks.back().shape;
-
-
-					for (GameObject& u : currentBricks.back().units)
+					for (GameObject& u : heldBrick.units)
 					{
 						BrickUnitData& data = gridData.currentUnits[u.specificDataLocation];
+						grid[data.prevPosition.y][data.prevPosition.x] = GridCell();
 						data.shape = Piece::nullPiece;
 					}
 
-					currentBricks.back().numDreprecatedUnits = 4;
-					currentBricks.back().hasToUpdate = true;
+					heldBrick.numDreprecatedUnits = 4;
 
-					gridData.bricksToUpdate.push_back(currentBricks.size() - 1);
+					if (!heldBrick.hasToUpdate)
+					{
+						heldBrick.hasToUpdate = true;
+						gridData.bricksToUpdate.push_back(static_cast<int16_t>(gridData.playingBrickHandle));
+					}
 
-					updateGrid(gs, res, gridData, 0, true);
-
-
-					createPlayingBrick(gs, res, currentBricks, 0, toBeCreatedPiece);
+					// Spawns the replacement and re-points playingBrickHandle at it;
+					// the held brick is released by updateGrid once its units are gone.
+					createPlayingBrick(gs, res, 0, toBeCreatedPiece);
 				}
 				if (state.keys[gs.configuratedKeys.hardDrop])
 				{
+					DBG_IF(flux::verbose, "TRYING HARD DROP");
 					if (!gs.hardDropPressed && gs.preventAcidentalHardDropTimer.isTimedOut())
 					{
-						updateBrickPositionTranslational(gs.grids[0].currentBricks.back(), gs.grids[0], glm::ivec2(0, gs.grids[0].biggestYFallForPlayingBrick), true);
+						if(updateBrickPositionTranslational(gs.grids[0].playingBrick(), gs.grids[0], glm::ivec2(0, gs.grids[0].biggestYFallForPlayingBrick), true))
+						{
+							DBG_IF(flux::verbose, "SUCCEDED");
+							gs.grids[0].previewHasToUpdate = true;
+						}
+						else
+						{
+							DBG_IF(flux::verbose, "FAILED");
+
+						}
 
 						gs.fallLockInTimer.timeOutTimer();
 						gs.preventAcidentalHardDropTimer.reset();
 						gs.hardDropPressed = true;
 						gs.grids[0].biggestYFallForPlayingBrick = 0;
-
 					}
 				}
 				break;
@@ -239,51 +261,53 @@ int main(int argc, char* argv[])
 					gs.hardDropPressed = false;
 				}
 				break;
-			default:
-				break;
 			}
 		}
+		// end of event poll
 
-		//update bricks
-		for (size_t i = 0; i < gs.grids.size(); i++)
+		// updates playing bricks
+		for (size_t i = 1; i < gs.grids.size(); i++)
 		{
-			for (BrickData& brick : gs.grids[i].currentBricks)
-			{
-				updateBricks(state, gs, res, gs.grids[i], brick, i, deltaTime);
-
-			}
+			DBG_IF(flux::verbose, "INITIALIZING updatePlayingBrick");
+			updatePlayingBrick(state, gs, res, gs.grids[i], i, deltaTime);
 		}
+		updatePlayingBrick(state, gs, res, gs.grids[0], 0, deltaTime);
 
+		// updates grids
 		for (size_t i = 0; i < gs.grids.size(); i++)
 		{
 			GridData& gridData = gs.grids[i];
-			BrickData& playingBrickFirst = gridData.currentBricks.back();
-			BrickData& previewBrick = gridData.previewBrick;
-
-			BrickUnitData& dataPlaying = gridData.currentUnits[playingBrickFirst.units[0].specificDataLocation];
-			BrickUnitData& dataPreview = gridData.currentUnits[previewBrick.units[0].specificDataLocation];
-
-			bool playingBrickMoved = dataPlaying.position != dataPlaying.prevPosition || dataPlaying.rotationState != dataPreview.rotationState;
-
-
+			
 			if (i > 0)
 			{
 				// Run AI analysis (incremental) and execute moves when ready.
-				AIUpdate(gs, res, i, deltaTime);
 				updateGrid(gs, res, gs.grids[i], i, true);
 			}
 			else
 			{
-				std::vector<std::vector<GridCell>>& grid = gs.grids[0].gridUnitsData;
-				std::vector<BrickData>& currentBricks = gs.grids[0].currentBricks;
+				DBG_IF(flux::verbose, "PREPARING UPDATE GRID CALL");
 
+				BrickData& previewBrick = gridData.previewBrick;
+				stdMat<GridCell>& grid = gridData.gridUnitsData;
+				std::vector<BrickData>& currentBricks = gridData.currentBricks;
+
+				// Consume the flag now: it's set by updatePlayingBrick (on
+				// successful move/rotation), by the hard-drop poll handling
+				// above, and by createPlayingBrick on brick creation.
+				bool updatePreview = gridData.previewHasToUpdate;
+				gridData.previewHasToUpdate = false;
+
+				// uses last computed gs.coutingLockIn
+				if (gs.coutingLockIn)
+				{
+					gs.fallLockInTimer.step(deltaTime);
+				}
+
+				// redetermines gs.coutingLockIn
 				gs.coutingLockIn = false;
-
-				// for unit in current playing brick
-				for (GameObject& u : currentBricks.back().units)
+				for (GameObject& u : gridData.playingBrick().units)
 				{
 					BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-
 
 					int& y = uData.position.y;
 					int& x = uData.position.x;
@@ -292,13 +316,13 @@ int main(int argc, char* argv[])
 						gs.coutingLockIn = true;
 						break;
 					}
-					else if ((grid[static_cast<size_t>(y + 1)][static_cast<size_t>(x)] && grid[static_cast<size_t>(y + 1)][static_cast<size_t>(x)].brickIndex != uData.indexInCurrentBricks)) {
+					else if ((grid[static_cast<size_t>(y + 1)][static_cast<size_t>(x)] && gridData.currentUnits[grid[static_cast<size_t>(y + 1)][static_cast<size_t>(x)].unitHandle].indexInCurrentBricks != uData.indexInCurrentBricks)) {
 						gs.coutingLockIn = true;
 						break;
 					}
-
 				}
-
+				
+				// uses recomputed gs.coutingLockIn
 				if (!gs.coutingLockIn)
 				{
 					gs.fallLockInTimer.reset();
@@ -309,61 +333,53 @@ int main(int argc, char* argv[])
 					gs.fallLockInTimer.reset();
 					gs.coutingLockIn = false;
 
-					if (gs.grids[0].currentBricks.back().hasToUpdate)
+					updatePreview = true;
+
+					if (gridData.playingBrick().hasToUpdate)
 					{
-						gs.grids[0].currentBricks.back().hasToUpdate = false;
+						gridData.playingBrick().hasToUpdate = false;
 
-						auto playingBrickIt = std::max_element(gs.grids[0].bricksToUpdate.begin(), gs.grids[0].bricksToUpdate.end());
+						// Drop this brick's own entry: playingPieceDropped writes its
+						// cells directly. Previously this took the largest index in
+						// bricksToUpdate, assuming the playing brick was always the
+						// last one pushed -- with pooled handles that no longer holds.
+						auto playingBrickIt = std::find(gridData.bricksToUpdate.begin(), gridData.bricksToUpdate.end(),
+							static_cast<int16_t>(gridData.playingBrickHandle));
 
-						gs.grids[0].bricksToUpdate.erase(playingBrickIt);
+						if (playingBrickIt != gridData.bricksToUpdate.end())
+						{
+							gridData.bricksToUpdate.erase(playingBrickIt);
+						}
 					}
 
-					updateGrid(gs, res, gs.grids[i], i, true);
-
+					// already updates the grid, and re-points playingBrickHandle
 					playingPieceDropped(gs, res, gs.grids[0], 0);
 				}
 				else
 				{
 					updateGrid(gs, res, gs.grids[i], i, true);
 				}
-			}
-			BrickData& playingBrickFinal = gridData.currentBricks.back();
 
-
-			bool playingBrickChanged = playingBrickFinal.brickId != playingBrickFirst.brickId || dataPreview.position.x == -1;
-
-			if (playingBrickChanged || playingBrickMoved)
-			{
-				gridData.biggestYFallForPlayingBrick = getbiggestYFallForBrick(playingBrickFinal, gridData);
-				for (size_t i = 0; i < 4; i++)
+				if (updatePreview)
 				{
-					BrickUnitData& finalUdata = gridData.currentUnits[playingBrickFinal.units[i].specificDataLocation];
-					BrickUnitData& previewUdata = gridData.currentUnits[previewBrick.units[i].specificDataLocation];
+					for (size_t i = 0; i < 4; i++)
+					{
+						BrickUnitData& playingUdata = gridData.currentUnits[gridData.playingBrick().units[i].specificDataLocation];
+						BrickUnitData& previewUdata = gridData.currentUnits[previewBrick.units[i].specificDataLocation];
 
-					previewUdata.position = finalUdata.position;
-					previewUdata.rotationState = finalUdata.rotationState;
+						previewUdata.position = playingUdata.position;
+						previewUdata.rotationState = playingUdata.rotationState;
+					}
+					
+					updateBrickPositionTranslational(previewBrick, gridData, glm::ivec2(0, gridData.biggestYFallForPlayingBrick));
 				}
-				std::cout << "aasjdfkjsdafkaaaaadjfjdfa\n";
-
-				std::cout << "bggst fall: " << static_cast<int>(gridData.biggestYFallForPlayingBrick) << "\n";
-
-				updateBrickPositionTranslational(previewBrick, gridData, glm::ivec2(0, gridData.biggestYFallForPlayingBrick));
 			}
-
 		}
 
-		gs.FPSTimer.step(deltaTime);
-		fps += 1;
+		DBGGRID_IF(flux::verbose, gs.grids[0]);
+		DBG_IF(flux::verbose, "biggestFall", gs.grids[0].biggestYFallForPlayingBrick);
 
-		if (gs.FPSTimer.isTimedOut())
-		{
-			gs.FPSTimer.reset();
-			gs.fps = fps;
-			fps = 0;
-		}
-
-		std::cout << "FPS: " << gs.fps * 10 << "\n";
-
+		// drawing phase
 		// Clear the screen first
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -374,16 +390,13 @@ int main(int argc, char* argv[])
 			res.points[0].translateModel(-l.position - glm::vec4(0.0f, 0.0f, 0.1f, 0.0f));
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, res.brickUBO);
-
-
+		glBindBuffer(GL_UNIFORM_BUFFER, res.brickUBO);	
 
 		// Update camera matrix
 		res.camera.updateMatrix(80.0f, 0.1f, 100.0f, state.width, state.height);
 
 		res.anims[0][0].step(deltaTime);
-
-
+		
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
 			0,
@@ -406,26 +419,53 @@ int main(int argc, char* argv[])
 		{
 			if (i == 0)
 			{
+				DBG_IF(flux::verbose, "INITIALIZING drawGrid");
 				drawGrid(state, res, gs, gs.grids[i], deltaTime, i);
 			}
 		}
-
-		res.shaderProgram[0].Activate();
-		glUniform1i(glGetUniformLocation(res.shaderProgram[0].ID, "numBrickLights"), res.brickLights.size());
-		glUniform1i(glGetUniformLocation(res.shaderProgram[0].ID, "numScenarioLights"), res.scenarioLights.size());
 		
+		// draw setup 1
+		DBG_IF(flux::verbose, "CHANGING SHADER TO INDEX 0");
+		res.shaderProgram[0].Activate();
+		DBG_IF(flux::verbose, "SET UNIFORM numBrickLights");
+		glUniform1i(glGetUniformLocation(res.shaderProgram[0].ID, "numBrickLights"), res.brickLights.size());
+		DBG_IF(flux::verbose, "SET UNIFORM numScenarioLights");
+		glUniform1i(glGetUniformLocation(res.shaderProgram[0].ID, "numScenarioLights"), res.scenarioLights.size());
+		DBG_IF(flux::verbose, "SET UNIFORM texCoordOffset");
 		glUniform2f(glGetUniformLocation(res.shaderProgram[0].ID, "texCoordOffset"), 0.0f, 0.0f);
 
+		DBG_IF(flux::verbose, "CALLING DRAW UPON SCENARIO OBJECT 0");
 		gs.scenarioObjects[0].Draw(res, res.shaderProgram[0], res.camera);
-
+		
+		// draw setup 2
+		DBG_IF(flux::verbose, "SET UNIFORM texCoordOffset");
 		glUniform2f(glGetUniformLocation(res.shaderProgram[0].ID, "texCoordOffset"), res.anims[0][0].getSpriteUVOffsetX(), res.anims[0][0].getSpriteUVOffsetY());
-
-		// Draw the portal mesh
+		
+		DBG_IF(flux::verbose, "CALLING DRAW UPON SCENARIO OBJECT 1");
 		gs.scenarioObjects[1].Draw(res, res.shaderProgram[0], res.camera);
 
+		DBG_IF(flux::verbose, "SWAPPING DRAW BUFFERS");
 		SDL_GL_SwapWindow(state.window);
+		
+
+		gs.FPSTimer.step(deltaTime);
+		fps += 1;
+
+		if (gs.FPSTimer.isTimedOut())
+		{
+			gs.FPSTimer.reset();
+			gs.fps = fps;
+			fps = 0;
+		}
+
+		DBG_IF(flux::verbose, "FPS", gs.fps * 10);
 
 		prevTime = nowTime;
+
+		while ((SDL_GetTicks() - prevTime) < 1000 / gs.fpsLimit)
+		{
+			auto t = prevTime;
+		}
 	}
 
 	cleanup(state);
@@ -501,6 +541,8 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 
 	int instanceCount = 4;
 
+	DBG_IF(flux::verbose, "DEFINING INSTANCE BUFFER");
+	// buffers instace data for every piece unit in game 
 	for (int y = 0; y < gridData.gridRows; y++)
 	{
 		for (int x = 0; x < gridData.gridColumns; x++)
@@ -508,44 +550,49 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 			GridCell& cell = gridData.gridUnitsData[y][x];
 			if (cell)
 			{
-				GameObject& unit = gridData.currentBricks[cell.brickIndex].units[cell.unitNum];
-				BrickUnitData& uData = gridData.currentUnits[unit.specificDataLocation];
+				MDBG_IF(flux::verbose, "CELL DETECTED AT", DBG_N("x", x), DBG_N("y", y));
 
+				BrickUnitData& uData = gridData.currentUnits[cell.unitHandle];
 
 				instanceCount++;
 
+				// x displacement
 				instancesData.push_back(x * 0.030483870967741);
 
-				if (uData.indexInCurrentBricks == gridData.currentBricks.size() - 1 && !gs.coutingLockIn)
+				// y displacement
+				if (uData.indexInCurrentBricks == gridData.playingBrickHandle && !gs.coutingLockIn)
 				{
 					instancesData.push_back((gridData.gridRows - (y + gs.gravityTimer.getTime() / gs.gravityTimer.getLength()) - 1) * 0.030483870967741f * dsin(82.0f));
-
 				}
 				else
 				{
 					instancesData.push_back((gridData.gridRows - y - 1) * 0.030483870967741f * dsin(82.0f));
-
 				}
-				instancesData.push_back(0.0f);
-				instancesData.push_back((static_cast<int>(uData.shape) + 1) * 0.029296875f);
 
+				// z displacement
 				instancesData.push_back(0.0f);
+
+				// texture step, based on shape
+				instancesData.push_back((static_cast<int>(uData.shape) + 1) * 0.029296875f);
+				instancesData.push_back(0.0f);
+
+				MDBG_IF(flux::verbose, "PUSHED INSTANCE DATA TO BUFFER");
 			}
 		}
 	}
 
 	GameObject& previewBrickU = gridData.previewBrick.units[0];
-	GameObject& PlayingBrickU = gridData.currentBricks.back().units[0];
+	GameObject& PlayingBrickU = gridData.playingBrick().units[0];
 	BrickUnitData& previewBrickUData = gridData.currentUnits[previewBrickU.specificDataLocation];
 	BrickUnitData& playingBrickUData = gridData.currentUnits[PlayingBrickU.specificDataLocation];
 
 	if (previewBrickUData.position.y != playingBrickUData.position.y)
 	{
-
+		MDBG_IF(flux::verbose, "DRAWING PREVIEW UNITS");
 		instanceCount += 4;
 		glm::vec4 lightPos(0);
 
-		switch (gridData.currentBricks.back().shape)
+		switch (gridData.playingBrick().shape)
 		{
 		case Piece::O:
 			res.brickLights[0].color = glm::vec4(res.hexadecimalToRGB("#fff405"), 1.0f);
@@ -580,12 +627,13 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 		
 		for (GameObject& unit : gridData.previewBrick.units)
 		{
+			MDBG_IF(flux::verbose, "LOOP TROUGH PREVIEW UNITS");
 			BrickUnitData& uData = gridData.currentUnits[unit.specificDataLocation];
 
 			int& x = uData.position.x;
 			int& y = uData.position.y;
 
-			std::cout << x << ", " << y;
+			MDBG_IF(flux::verbose, DBG_N("x", x), DBG_N("y", y));
 
 			float worldSpaceGridAlignedX = x * 0.030483870967741f;
 			float worldSpaceGridAlignedY = (gridData.gridRows - y - 1) * 0.030483870967741f;
@@ -598,11 +646,16 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 
 			lightPos.x += worldSpaceGridAlignedX / 4.0f;
 			lightPos.y += worldSpaceGridAlignedY / 4.0f;
+			MDBG_IF(flux::verbose, "ITERATION END");
 		}
 		
 		res.brickLights[0].position = lightPos;
 		
 	}
+
+	MDBG_IF(flux::verbose, "DRAWING NEXT PIECE");
+	// draws next pieces on the slot
+	
 	Piece& shape = gridData.nextBricks[gridData.rotationIndexNextBricks];
 	std::array<glm::ivec2, 4> positions = createStartingPos(shape);
 	for (glm::ivec2& pos : positions)
@@ -652,6 +705,8 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 		instancesData.push_back(0.0f);
 	}
 
+	MDBG_IF(flux::verbose, "DRAWING HOLD PIECE");
+	// draws hold piece
 	Piece& shapeHold = gridData.reservedBrick;
 	if (shapeHold != Piece::nullPiece)
 	{
@@ -705,7 +760,10 @@ void drawGrid(SDLState& state, Resources& res, GameState& gs, GridData& gridData
 		}
 	}
 
+	MDBG_IF(flux::verbose, "UPDATING INSTANCE VBO");
 	res.meshs[2].updateInstanceVBO(instancesData);
+
+	MDBG_IF(flux::verbose, "CALLING DRAW UPON CONSTRUCTED MESH");
 	res.meshs[2].Draw(res.shaderProgram[1], res.camera, glm::mat4(1), instanceCount);
 }
 
@@ -769,7 +827,7 @@ void updateGridStatistics(GameState& gs, GridData& gridData)
 {
 	if (gridData.rowsToUpdate.empty()) return;
 
-	std::vector<std::array<int8_t, 3>> columnsCheckedForGaps;
+	vecArr<int8_t, 3> columnsCheckedForGaps;
 	columnsCheckedForGaps.resize(gridData.gridColumns);
 
 	for (size_t index : gridData.rowsToUpdate)

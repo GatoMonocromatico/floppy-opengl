@@ -1,4 +1,5 @@
 #include "game/brickUtils.h"
+#include "util/DebugLog.h"
 
 std::array<glm::ivec2, 4> createStartingPos(Piece s)
 {
@@ -68,12 +69,12 @@ std::array<glm::ivec2, 4> createStartingPos(Piece s)
 			glm::ivec2(0, 0),
 			glm::ivec2(0, 0)
 		};
-		std::cout << "INVALID PIECE DETECTED!!!!!!!!!!!\n";
+		DBG_IF(flux::verbose, "INVALID PIECE DETECTED!!!!!!!!!!!");
 		break;
 	}
 }
 
-std::array<std::array<glm::ivec2, 4>, 4> createRotationalAdjustments(Piece s) {
+stdArrMat<glm::ivec2, 4, 4> createRotationalAdjustments(Piece s) {
 	switch (s)
 	{
 	case Piece::T:
@@ -140,34 +141,86 @@ std::array<std::array<glm::ivec2, 4>, 4> createRotationalAdjustments(Piece s) {
 			std::array<glm::ivec2, 4> { glm::ivec2(0, 0), glm::ivec2(0, 0), glm::ivec2(0, 0), glm::ivec2(0, 0)},
 			std::array<glm::ivec2, 4> { glm::ivec2(0, 0), glm::ivec2(0, 0), glm::ivec2(0, 0), glm::ivec2(0, 0)}
 		};
-		std::cout << "INVALID PIECE DETECTED!!!!!!!!!!!\n";
+		DBG_IF(flux::verbose, "INVALID PIECE DETECTED!!!!!!!!!!!");
 		break;
 	}
 }
 
-size_t createUnit(GridData& gridData, glm::ivec2 pos, std::array<glm::ivec2, 4> ra, Piece s, int n, size_t index, uint32_t id)
+// Allocates a slot from the free list when one is available, only growing the pool
+// when it is empty. This is what keeps currentUnits bounded -- it used to grow by 4
+// every piece forever, because the compaction that was supposed to reclaim slots
+// never actually shrank the vector.
+static size_t allocUnitSlot(GridData& gridData)
 {
-	gridData.currentUnits.push_back(BrickUnitData(pos, ra, s, n, index, id, gridData.currentUnits.size()));
+	if (!gridData.freeUnits.empty())
+	{
+		size_t handle = gridData.freeUnits.back();
+		gridData.freeUnits.pop_back();
+		return handle;
+	}
 
+	gridData.currentUnits.push_back(BrickUnitData());
 	return gridData.currentUnits.size() - 1;
 }
-size_t createUnit(GridData& gridData, int x, int y, std::array<glm::ivec2, 4> ra, Piece s, int n, size_t index, uint32_t id)
-{
-	gridData.currentUnits.push_back(BrickUnitData(x, y, ra, s, n, index, id, gridData.currentUnits.size()));
 
-	return gridData.currentUnits.size() - 1;
+size_t createUnit(GridData& gridData, glm::ivec2 pos, std::array<glm::ivec2, 4> ra, Piece s, size_t index, uint32_t id)
+{
+	size_t handle = allocUnitSlot(gridData);
+	gridData.currentUnits[handle] = BrickUnitData(pos, ra, s, index, id);
+
+	return handle;
+}
+size_t createUnit(GridData& gridData, int x, int y, std::array<glm::ivec2, 4> ra, Piece s, size_t index, uint32_t id)
+{
+	return createUnit(gridData, glm::ivec2(x, y), ra, s, index, id);
 }
 size_t createUnit(GridData& gridData)
 {
-	gridData.currentUnits.push_back(BrickUnitData());
+	size_t handle = allocUnitSlot(gridData);
+	gridData.currentUnits[handle] = BrickUnitData();
 
-	return gridData.currentUnits.size() - 1;
+	return handle;
+}
+
+void freeUnit(GridData& gridData, size_t handle)
+{
+	// Left in place, only marked dead and queued for reuse. Moving it would
+	// invalidate every handle stored in a GridCell or a brick's units.
+	gridData.currentUnits[handle] = BrickUnitData();
+	gridData.freeUnits.push_back(handle);
+}
+
+size_t createBrick(GridData& gridData, Piece shape, uint32_t id)
+{
+	size_t handle;
+
+	if (!gridData.freeBricks.empty())
+	{
+		handle = gridData.freeBricks.back();
+		gridData.freeBricks.pop_back();
+	}
+	else
+	{
+		gridData.currentBricks.push_back(BrickData());
+		handle = gridData.currentBricks.size() - 1;
+	}
+
+	gridData.currentBricks[handle] = BrickData(shape, static_cast<unsigned int>(handle), id);
+
+	return handle;
+}
+
+void freeBrick(GridData& gridData, size_t handle)
+{
+	gridData.currentBricks[handle] = BrickData();
+	gridData.freeBricks.push_back(handle);
 }
 
 
 int getbiggestYFallForBrick(BrickData& brick, GridData& gridData)
 {
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	DBG_IF(flux::verbose, "CALCULATING BIGGEST FALL");
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	int lowestDeltaY = 25;
 
 	for (GameObject& u : brick.units)
@@ -187,13 +240,15 @@ int getbiggestYFallForBrick(BrickData& brick, GridData& gridData)
 		}
 	}
 
+	DBG_IF(flux::verbose, "fall", lowestDeltaY);
+
 	return lowestDeltaY;
 }
 
 
 bool isUnitPositionValid(GameObject& u, int x, int y, GridData& gridData)
 {
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
 
 	bool validation = true;
@@ -202,10 +257,10 @@ bool isUnitPositionValid(GameObject& u, int x, int y, GridData& gridData)
 	{
 		validation = false;
 	}
-	else if (grid[y][x] && grid[y][x].brickIndex != uData.indexInCurrentBricks)
+	else if (grid[y][x] && gridData.currentUnits[grid[y][x].unitHandle].indexInCurrentBricks != uData.indexInCurrentBricks)
 	{
 		validation = false;
-		std::cout << "invalid position: already has a brick in position\n";
+		DBG_IF(flux::verbose, "invalid position: already has a brick in position");
 
 	}
 
@@ -215,7 +270,7 @@ bool isUnitPositionValid(GameObject& u, int x, int y, GridData& gridData)
 
 bool updateBrickPositionTranslational(BrickData& brick, GridData& gridData, glm::ivec2 deltaPos, bool changeData)
 {
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	bool isValidMove = true;
 
 	int newX, newY;
@@ -257,7 +312,7 @@ bool updateBrickPositionTranslational(BrickData& brick, GridData& gridData, glm:
 
 bool updateBrickPositionRotation(BrickData& brick, GridData& gridData, int CWRotations, bool changeData)
 {
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	bool isValidMove = true;
 
 	std::array<glm::vec2, 4> liquidRotationalAdjustments;
@@ -284,10 +339,12 @@ bool updateBrickPositionRotation(BrickData& brick, GridData& gridData, int CWRot
 		}
 	}
 
+	// if plain rotation is not valid
 	if (!isValidMove)
 	{
-		std::array<std::vector<glm::ivec2>, 3> testAdjustments;
+		arrVec<glm::ivec2, 3> testAdjustments;
 
+		// sets wall kicks
 		if (brick.shape == Piece::I)
 		{
 
@@ -364,11 +421,10 @@ bool updateBrickPositionRotation(BrickData& brick, GridData& gridData, int CWRot
 				std::vector<glm::ivec2> { glm::ivec2(-1, 0), glm::ivec2(-1, 1), glm::ivec2(0, -2), glm::ivec2(-1, -2)}, // 3 -> 2
 				};
 				break;
-
-
 			}
 
 		}
+
 		for (glm::ivec2& testAdjustmentPosVector : testAdjustments[CWRotations - 1]) // CWRotations ranges from 1-3, testAdjustments ranges from 0-2
 		{
 			for (int i = 0; i < 4; ++i)
@@ -395,6 +451,7 @@ bool updateBrickPositionRotation(BrickData& brick, GridData& gridData, int CWRot
 
 		}
 	}
+	
 	if (isValidMove)
 	{
 		brick.rotationState = (brick.rotationState + CWRotations) % 4;
@@ -410,6 +467,8 @@ bool updateBrickPositionRotation(BrickData& brick, GridData& gridData, int CWRot
 
 		if (changeData)
 		{
+			brick.wasntHandledSinceRotation = true;
+
 			if (!brick.hasToUpdate)
 			{
 				gridData.bricksToUpdate.push_back(brick.indexInCurrentBricks);

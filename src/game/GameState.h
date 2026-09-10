@@ -93,6 +93,8 @@ struct GameState
 	Timer preventAcidentalHardDropTimer;
 	Timer FPSTimer;
 
+	uint fpsLimit = -1;
+
 	int fps;
 
 	std::mt19937 rng;

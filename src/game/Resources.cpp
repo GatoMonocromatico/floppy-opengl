@@ -1,4 +1,5 @@
 #include "game/Resources.h"
+#include "util/DebugLog.h"
 
 glm::vec3 Resources::hexadecimalToRGB(std::string hex, float saturationOffset)
 {
@@ -13,7 +14,6 @@ glm::vec3 Resources::hexadecimalToRGB(std::string hex, float saturationOffset)
 	{
 		for (int hexadecimalPlace = 0; hexadecimalPlace < 2; hexadecimalPlace++)
 		{
-			//std::cout << "idx: " << i * 2 + hexadecimalPlace << ", hex size: " << hex.size() << std::endl;
 			switch (hex[i * 2 + hexadecimalPlace])
 			{
 			case '0':
@@ -280,10 +280,11 @@ void Resources::load()
 
 	if (lightBlockIndex1 == GL_INVALID_INDEX)
 	{
-		std::cout << "BrickLights block not found!" << std::endl;
-	}if (lightBlockIndex2 == GL_INVALID_INDEX)
+		DBG_IF(flux::verbose, "BrickLights block not found!");
+	}
+	if (lightBlockIndex2 == GL_INVALID_INDEX)
 	{
-		std::cout << "ScenarioLights block not found!" << std::endl;
+		DBG_IF(flux::verbose, "ScenarioLights block not found!");
 	}
 
 	scenarioLights.push_back(Light{ glm::vec4(0.55f - 0.775f, 0.0f, 0.4f, 0.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) });

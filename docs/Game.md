@@ -13,17 +13,20 @@ Tetris-roguelike game logic: grid/brick rules, AI, and the resource bundle that 
   lines); pulls together `GameState`, `gameObject`, and `brickUtils`.
 - **GameState** (`GameState.h/.cpp`) — top-level mutable game state: key bindings
   (`ConfiguratedKeys`), timers, and owns the `Resources` and `AI` instances for a run.
-- **gameObject** (`gameObject.h/.cpp`) — grid/brick data types (including
-  `RowStatistics`) and the game-object entities placed on the grid; the biggest header
-  in this layer, includes from [[Render]] (`camera`, `animation`, `shaderClass`) and
-  [[Game]] (`Resources`).
+- **gameObject** (`gameObject.h/.cpp`) — grid/brick data types and the game-object
+  entities placed on the grid; the biggest header in this layer, includes from
+  [[Render]] (`camera`, `animation`, `shaderClass`) and [[Game]] (`Resources`). Holds
+  the `currentBricks` / `currentUnits` pools and their free lists — read
+  [[Entity Handles]] before touching them, and `RowStatistics`, the one maintained
+  board statistic (see [[AI]] for why it is the only one).
 
 ## Bricks & AI
 
 - **brickUtils** (`brickUtils.h/.cpp`) — brick shape/placement helpers operating on
   `gameObject` types.
-- **AI** (`AI.h/.cpp`) — opponent/assist AI; depends on `gameObject` and `Timer`
-  ([[Util]]).
+- **AI** (`AI.h/.cpp`) — the enemy player: a bitboard beam search over hypothetical
+  boards; depends on `gameObject` and `Timer` ([[Util]]). See [[AI]] for the design and
+  its known gaps, and [[Attack Gauge]] for the system it will need to optimise.
 
 ## Resources
 
@@ -44,6 +47,10 @@ Resources ──> Mesh, Light, Point, Animation, Texture (all render/), mathUtil
 ```
 
 ## See also
+- [[Entity Handles]] — how bricks and units are stored; the rule that keeps it sound
+- [[Memory Safety]] — past heap corruption in this layer and how to reproduce it
+- [[AI]] — the enemy player's design
+- [[Attack Gauge]] — the core roguelike mechanic, not yet implemented
 - [[Render]] — the GPU-facing types `Resources` assembles
 - [[Util]] — `Timer`, `DebugLog`, `mathUtils` used throughout this layer
 - [[Project Structure]] — overall layering rules

@@ -5,7 +5,7 @@ EBO::EBO()
 {
 	// Allocate one buffer name; data upload happens in createEBO.
 	glGenBuffers(1, &ID);
-	MDBG("phase", "EBO::EBO glGenBuffers");
+	MDBG_IF(flux::verbose, DBG_N("phase", "EBO::EBO glGenBuffers"));
 }
 
 void EBO::createEBO(std::vector<GLuint>& indices)

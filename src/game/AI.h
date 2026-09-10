@@ -52,6 +52,10 @@ struct AISim {
 struct AINode {
     AISim  sim;
     float  score    =  0.f;
+    // Reward for lines cleared along the whole path to this node. Kept separate from
+    // the board evaluation because it is cumulative: a clear at depth 0 has to still
+    // count at depth 3, but the board eval only ever describes the current board.
+    float  clearReward = 0.f;
     int8_t firstRot = -1; // rotation used at depth 0 (the actual move)
     int8_t firstCol = -1; // column  used at depth 0
 };

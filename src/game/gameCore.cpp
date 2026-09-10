@@ -1,11 +1,14 @@
 #include "game/gameCore.h"
+#include "util/DebugLog.h"
 
-void createPlayingBrick(GameState& gs, Resources& res, std::vector<BrickData>& currentBricks, size_t thisGridIndex, Piece shape)
+void createPlayingBrick(GameState& gs, Resources& res, size_t thisGridIndex, Piece shape)
 {
-	uint32_t& idNextCreatedBrick = gs.grids[thisGridIndex].idNextCreatedBrick;
+	DBG_IF(flux::verbose, "createPlayingBrick gridIndex", thisGridIndex);
 	GridData& gridData = gs.grids[thisGridIndex];
-	GameObject& previewU = gridData.previewBrick.units[0];
-	BrickUnitData& previewUData = gridData.currentUnits[previewU.specificDataLocation];
+	uint32_t& idNextCreatedBrick = gridData.idNextCreatedBrick;
+	// Handle, not a reference: createUnit() below can grow currentUnits, which would
+	// invalidate anything held across it.
+	const size_t previewLoc = gridData.previewBrick.units[0].specificDataLocation;
 
 	gs.fallLockInTimer.reset();
 	gs.coutingLockIn = false;
@@ -13,222 +16,246 @@ void createPlayingBrick(GameState& gs, Resources& res, std::vector<BrickData>& c
 	if (shape == Piece::nullPiece)
 	{
 		std::uniform_int_distribution<int> dist(0, 6);
+		shape = static_cast<Piece>(dist(gs.rng));
 
-		int randomShape = dist(gs.rng);
-		shape = static_cast<Piece>(randomShape);
-
-#ifdef DEBUG
-		std::cout << "criou random";
-#endif // DEBUG
+		DBG_IF(flux::verbose, "criou random");
 	}
-	BrickData brick(shape, currentBricks.size(), idNextCreatedBrick);
 
-	auto initializeUnits = [&](Piece s, const std::array<glm::ivec2, 4>  pos, const std::array<std::array<glm::ivec2, 4>, 4>& RA) {
-		for (size_t i = 0; i < 4; i++)
-		{
-			brick.units.push_back(GameObject(ObjectType::brickUnit, createUnit(gridData, pos[i], RA[i], s, i, brick.indexInCurrentBricks, brick.brickId), 2));
-
-			previewUData.brickId = brick.brickId;
-		}
-		};
+	const size_t brickHandle = createBrick(gridData, shape, idNextCreatedBrick);
 
 	std::array<glm::ivec2, 4> pos = createStartingPos(shape);
-	std::array<std::array<glm::ivec2, 4>, 4> RA = createRotationalAdjustments(shape);
+	stdArrMat<glm::ivec2, 4, 4> RA = createRotationalAdjustments(shape);
 
-	initializeUnits(shape, pos, RA);
+	for (size_t i = 0; i < 4; i++)
+	{
+		size_t unitHandle = createUnit(gridData, pos[i], RA[i], shape, brickHandle, idNextCreatedBrick);
+		gridData.currentBricks[brickHandle].units.push_back(GameObject(ObjectType::brickUnit, unitHandle, 2));
+	}
 
-	currentBricks.push_back(brick);
+	gridData.currentUnits[previewLoc].brickId = idNextCreatedBrick;
+	gridData.currentUnits[previewLoc].position.x = -1;
 
-	gridData.bricksToUpdate.push_back(brick.indexInCurrentBricks);
-	brick.hasToUpdate = true;
+	gridData.playingBrickHandle = static_cast<int32_t>(brickHandle);
 
-	previewUData.position.x = -1;
+	gridData.bricksToUpdate.push_back(static_cast<int16_t>(brickHandle));
+	// Set on the pooled brick, not on a local copy. The old code flagged a stack
+	// temporary after push_back, so the element in the vector never got the flag.
+	gridData.currentBricks[brickHandle].hasToUpdate = true;
+	gridData.previewHasToUpdate = true;
+	gridData.biggestYFallForPlayingBrick = getbiggestYFallForBrick(gridData.currentBricks[brickHandle], gridData);
+
+	DBGGRID_IF(flux::verbose && (thisGridIndex == 0), gridData);
+	DBG_IF(flux::verbose && (thisGridIndex == 0), "createPlayingBrick gridData.fall", gridData.biggestYFallForPlayingBrick);
 
 	idNextCreatedBrick += 1;
 }
 
-void updateBricks(const SDLState& state, GameState& gs, Resources& res, GridData& gridData, BrickData& brick, size_t thisGridIndex, float deltaTime)
+std::array<bool, 3> updatePlayingBrick(const SDLState& state, GameState& gs, Resources& res, GridData& gridData, size_t thisGridIndex, float deltaTime)
 {
-	std::vector<std::vector<GridCell>>& grid = gs.grids[thisGridIndex].gridUnitsData;
+	std::array<bool, 3> playingBrickMoved{false, false, false};
 
-	if (brick.state != BrickState::solid) {
-		if (gs.coutingLockIn) {
-			gs.fallLockInTimer.step(deltaTime);
+	BrickData& brick = gridData.playingBrick();
+
+	stdMat<GridCell>& grid = gs.grids[thisGridIndex].gridUnitsData;
+
+	Timer& gravityTimer = thisGridIndex == 0 ? gs.gravityTimer : gs.gameGravityTimer;
+	// that wont work for more than 2 grids
+
+	gravityTimer.step(deltaTime);
+	//handle gravity
+	if (gravityTimer.isTimedOut())
+	{
+		gravityTimer.reset();
+		DBG_IF(flux::verbose, "TRYING GRAVITY FALL");
+		if (updateBrickPositionTranslational(brick, gridData, glm::ivec2(0, 1), true))
+		{
+			playingBrickMoved[1] = true;
+		}
+	}
+
+	if (thisGridIndex == 0)
+	{
+		gs.preventAcidentalHardDropTimer.step(deltaTime);
+
+		// continous piece handling
+		if (state.keys[gs.configuratedKeys.instantSoftDrop])
+		{
+			if (updateBrickPositionTranslational(gs.grids[0].playingBrick(), gridData, glm::ivec2(0, gs.grids[0].biggestYFallForPlayingBrick), true))
+			{
+				DBG_IF(flux::verbose, "TRYING INSTANT SOFT DROP");
+				playingBrickMoved[1] = true;
+			}
+
+			gs.grids[0].biggestYFallForPlayingBrick = 0;
 		}
 
-		Timer& gravityTimer = thisGridIndex == 0 ? gs.gravityTimer : gs.gameGravityTimer;
-		// that wont work for more than 2 grids
+		int currentDirection = 0;
 
-		gravityTimer.step(deltaTime);
-		//handle gravity
-		if (gravityTimer.isTimedOut())
+		if (state.keys[gs.configuratedKeys.moveRight])
 		{
-
-			gravityTimer.reset();
-			updateBrickPositionTranslational(brick, gridData, glm::ivec2(0, 1), true);
+			currentDirection += 1;
 		}
-
-
-		if (thisGridIndex == 0)
+		if (state.keys[gs.configuratedKeys.moveLeft])
 		{
-			if (state.keys[gs.configuratedKeys.instantSoftDrop])
+			currentDirection -= 1;
+		}
+		if (currentDirection)
+		{
+			switch (brick.state)
 			{
-				updateBrickPositionTranslational(gs.grids[0].currentBricks.back(), gridData, glm::ivec2(0, gs.grids[0].biggestYFallForPlayingBrick), true);
-				gs.grids[0].biggestYFallForPlayingBrick = 0;
-			}
-
-
-			gs.preventAcidentalHardDropTimer.step(deltaTime);
-
-			//handle piece handling
-			int currentDirection = 0;
-
-			if (state.keys[gs.configuratedKeys.moveRight])
+			case BrickState::idle:
 			{
-				currentDirection += 1;
-			}
-			if (state.keys[gs.configuratedKeys.moveLeft])
-			{
-				currentDirection -= 1;
-			}
-			if (currentDirection)
-			{
-				switch (brick.state)
-				{
-				case BrickState::idle:
+				DBG_IF(flux::verbose, "TRYING MOVE HORIZONTALLY");
+				if (updateBrickPositionTranslational(brick, gridData, glm::ivec2(currentDirection, 0), true))
 				{
 					brick.state = BrickState::moving;
+					brick.wasntHandledSinceRotation = false;
+					playingBrickMoved[0] = true;
+					gridData.previewHasToUpdate = true;
+				}
 
+				gs.startMovTimer.step(deltaTime);
+				break;
+			}
+			case BrickState::moving:
+			{
+				if (currentDirection != brick.movingDirection)
+				{
+					DBG_IF(flux::verbose, "TRYING MOVE HORIZONTALLY");
 					if (!updateBrickPositionTranslational(brick, gridData, glm::ivec2(currentDirection, 0), true))
 					{
 						brick.state = BrickState::idle;
+						playingBrickMoved[0] = true;
 					}
-					brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-
-					gs.startMovTimer.step(deltaTime);
-					break;
-				}
-				case BrickState::moving:
-				{
-					if (currentDirection != brick.movingDirection)
+					else
 					{
+						gridData.previewHasToUpdate = true;
+
+						if (brick.wasntHandledSinceRotation)
+						{
+							brick.wasntHandledSinceRotation = false;
+						}
+					}
+
+					gs.startMovTimer.reset();
+					gs.repeatedMovTimer.fullReset();
+				}
+
+				gs.startMovTimer.step(deltaTime);
+
+				if (gs.startMovTimer.isTimedOut())
+				{
+					gs.repeatedMovTimer.step(deltaTime);
+
+					if (gs.repeatedMovTimer.isTimedOut())
+					{
+						gs.repeatedMovTimer.reset();
+						DBG_IF(flux::verbose, "TRYING MOVE HORIZONTALLY");
 						if (!updateBrickPositionTranslational(brick, gridData, glm::ivec2(currentDirection, 0), true))
 						{
 							brick.state = BrickState::idle;
 						}
-						brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-
-						gs.startMovTimer.reset();
-						gs.repeatedMovTimer.fullReset();
-
-					}
-
-					gs.startMovTimer.step(deltaTime);
-
-					if (gs.startMovTimer.isTimedOut())
-					{
-						gs.repeatedMovTimer.step(deltaTime);
-
-						if (gs.repeatedMovTimer.isTimedOut())
+						else
 						{
-							gs.repeatedMovTimer.reset();
-							if (!updateBrickPositionTranslational(brick, gridData, glm::ivec2(currentDirection, 0), true))
+							playingBrickMoved[0] = true;
+							gridData.previewHasToUpdate = true;
+
+							if (brick.wasntHandledSinceRotation)
 							{
-								brick.state = BrickState::idle;
+								brick.wasntHandledSinceRotation = false;
 							}
-							brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-
 						}
-
 					}
-					break;
 				}
-				}
+				break;
 			}
-			else
-			{
-				brick.state = BrickState::idle;
-
-				gs.startMovTimer.reset();
-
-
-				gs.repeatedMovTimer.fullReset();
-			}
-
-			brick.movingDirection = currentDirection;
-
-			if (state.keys[gs.configuratedKeys.rotateCW])
-			{
-				if (!gs.flipBrickCWpressed)
-				{
-					updateBrickPositionRotation(brick, gridData, 1, true);
-
-					gs.flipBrickCWpressed = true;
-
-					brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-				}
-			}
-			else
-			{
-				gs.flipBrickCWpressed = false;
-			}
-
-			if (state.keys[gs.configuratedKeys.rotateCCW])
-			{
-				if (!gs.flipBrickCCWpressed)
-				{
-					updateBrickPositionRotation(brick, gridData, 3, true);
-					brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-				}
-				gs.flipBrickCCWpressed = true;
-			}
-			else
-			{
-				gs.flipBrickCCWpressed = false;
-			}
-			if (state.keys[gs.configuratedKeys.rotate180])
-			{
-				if (!gs.flipBrick180pressed)
-				{
-					updateBrickPositionRotation(brick, gridData, 2, true);
-					brick.wasntHandledSinceRotation = brick.state == BrickState::idle ? true : false;
-				}
-				gs.flipBrick180pressed = true;
-			}
-			else
-			{
-				gs.flipBrick180pressed = false;
 			}
 		}
 		else
 		{
-			if (brick.state != BrickState::solid)
-			{
-				//		gs.AIPLayIntervalTimers[thisGridIndex - 1].step(deltaTime);
-				//		if (gs.AIPLayIntervalTimers[thisGridIndex - 1].isTimedOut())
-				//		{
-				//			//AIPlay(state, gs, res, thisGridIndex, 1, 0);
-				//			gs.AIPLayIntervalTimers[thisGridIndex - 1].reset();
-				//		}
-			}
+			brick.state = BrickState::idle;
+			gs.startMovTimer.reset();
+			gs.repeatedMovTimer.fullReset();
 		}
 
+		brick.movingDirection = currentDirection;
+
+		if (state.keys[gs.configuratedKeys.rotateCW])
+		{
+			if (!gs.flipBrickCWpressed)
+			{
+				DBG_IF(flux::verbose, "TRYING CW ROTATION");
+				if (updateBrickPositionRotation(brick, gridData, 1, true))
+				{
+					playingBrickMoved[2] = true;
+					gridData.previewHasToUpdate = true;
+				}
+
+				gs.flipBrickCWpressed = true;
+
+			}
+		}
+		else
+		{
+			gs.flipBrickCWpressed = false;
+		}
+
+		if (state.keys[gs.configuratedKeys.rotateCCW])
+		{
+			if (!gs.flipBrickCCWpressed)
+			{
+				DBG_IF(flux::verbose, "TRYING CCW ROTATION");
+				if (updateBrickPositionRotation(brick, gridData, 3, true))
+				{
+					playingBrickMoved[2] = true;
+					gridData.previewHasToUpdate = true;
+				}
+			}
+			gs.flipBrickCCWpressed = true;
+		}
+		else
+		{
+			gs.flipBrickCCWpressed = false;
+		}
+		if (state.keys[gs.configuratedKeys.rotate180])
+		{
+			if (!gs.flipBrick180pressed)
+			{
+				DBG_IF(flux::verbose, "TRYING 180 ROTATION");
+				if (updateBrickPositionRotation(brick, gridData, 2, true))
+				{
+					playingBrickMoved[2] = true;
+					gridData.previewHasToUpdate = true;
+				}
+			}
+			gs.flipBrick180pressed = true;
+		}
+		else
+		{
+			gs.flipBrick180pressed = false;
+		}
+	}
+	else
+	{
+		if (brick.state != BrickState::solid)
+		{
+			AIUpdate(gs, res, thisGridIndex, deltaTime);
+		}
 	}
 
+	gridData.biggestYFallForPlayingBrick = getbiggestYFallForBrick(brick, gridData);
+	DBG_IF(flux::verbose, "gridData.fall", gridData.biggestYFallForPlayingBrick);
+
+	return playingBrickMoved;
 }
 
 AtackInfo playingPieceDropped(GameState& gs, Resources& res, GridData& gridData, size_t thisGridIndex, bool eraseBricks)
 {
-	// statistic purpose
-	std::vector<int> rowsToUpdate;
-	// statistic purpose
+	DBG_IF(flux::verbose, "INICIANDO playingPieceDropped");
 
 	std::vector<Piece>& nextBricks = gridData.nextBricks;
-
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
-	std::vector<BrickData>& currentBricks = gridData.currentBricks;
-
-	BrickData& playingBrick = currentBricks.back();
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
+	BrickData& playingBrick = gridData.playingBrick();
 
 	playingBrick.state = BrickState::solid;
 
@@ -241,126 +268,29 @@ AtackInfo playingPieceDropped(GameState& gs, Resources& res, GridData& gridData,
 	for (GameObject& u : playingBrick.units)
 	{
 		BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-		grid[uData.position.y][uData.position.x].brickIndex = uData.indexInCurrentBricks;
-		grid[uData.position.y][uData.position.x].unitNum = uData.numeration;
+		grid[uData.position.y][uData.position.x] = GridCell(static_cast<int32_t>(u.specificDataLocation));
 
-		//statistics update
-		//statistics update
-		//statistics update
-		int& X = uData.position.x;
-		int& Y = uData.position.y;
-
-		RowStatistics& row = gridData.rowsStatus[Y];
-
-		// adds unit to new row if it is not deprecated
-		row.numOfBricks += 1;
-
-		// updates new column height
-		if (gridData.gridRows - Y > gridData.columnsStatus[X].height)
-		{
-			gridData.columnsStatus[X].height = static_cast<int8_t>(gridData.gridRows - Y);
-		}
-
-		if (!row.hasToUpdate)
-		{
-			row.hasToUpdate = true;
-			rowsToUpdate.push_back(Y);
-		}
-		//statistics update
-		//statistics update
-		//statistics update
+		// The one maintained statistic: cleanFullLines needs it to spot full rows
+		// without rescanning the board.
+		gridData.rowsStatus[uData.position.y].numOfBricks += 1;
 
 		uData.prevPosition = uData.position;
 	}
 
-	//statistics update
-	//statistics update
-	//statistics update
-	for (int& rowIdx : rowsToUpdate)
-	{
-		RowStatistics& row = gridData.rowsStatus[rowIdx];
-
-		//checando por atack gaps
-		if (row.numOfBricks == gridData.gridColumns - 1 && row.hasToUpdate)
-		{
-			int gapXCord = 0;
-			for (gapXCord; gapXCord < gridData.gridColumns; gapXCord++)
-			{
-				if (gridData.gridUnitsData[rowIdx][gapXCord]) break;
-			}
-
-			/*if (gridData.columnsStatus[gapXCord].uniqueConsecutiveGaps > 0)
-			{
-				bool alreadyRegistered = false;
-				for (std::array<int8_t, 3>& gapInfo : gridData.columnsAligningConsecutiveAtackGaps)
-				{
-					if (gapInfo[0] == gapXCord)
-					{
-						if (rowIdx >= gapInfo[1] && rowIdx <= gapInfo[2])
-						{
-							break;
-
-						}
-					}
-				}
-			}*/
-
-			int gapStartY = row.y;
-			int gapEndY = row.y;
-			int gapSize = 1;
-
-			for (int increment = -1; increment <= 1; increment += 2)
-			{
-
-				int yPosBeingRead = row.y + increment;
-				while (yPosBeingRead < gridData.gridRows && yPosBeingRead >= 0)
-				{
-					RowStatistics& readingRow = gridData.rowsStatus[rowIdx];
-					readingRow.hasToUpdate = false;
-
-					if (readingRow.numOfBricks == gridData.gridColumns - 1)
-					{
-						if (!gridData.gridUnitsData[rowIdx][gapXCord])
-						{
-							gapSize += 1;
-
-							if (increment == -1) gapStartY = yPosBeingRead;
-							else                   gapEndY = yPosBeingRead;
-						}
-						else break;
-
-					}
-					else if (readingRow.numOfBricks < gridData.gridColumns - 1) break;
-
-					yPosBeingRead += increment;
-				}
-			}
-
-			if (gapSize > 1)
-			{
-				gridData.columnsStatus[gapXCord].uniqueConsecutiveGaps += 1;
-				gridData.columnsAligningConsecutiveAtackGaps.push_back(std::array<int8_t, 3>{static_cast<int8_t>(gapXCord), static_cast<int8_t>(gapStartY), static_cast<int8_t>(gapEndY)});
-			}
-		}
-
-		row.hasToUpdate = false;
-	}
-	//statistics update
-	//statistics update
-	//statistics update
-
+	DBG_IF(flux::verbose, "INICIANDO cleanFullLines");
 	AtackInfo atack = cleanFullLines(gs, res, gridData, thisGridIndex);
 
 	if (eraseBricks)
 	{
-		createPlayingBrick(gs, res, currentBricks, thisGridIndex, nextBricks[gridData.rotationIndexNextBricks]);
+		DBG_IF(flux::verbose, "eraseBricks");
+		createPlayingBrick(gs, res, thisGridIndex, nextBricks[gridData.rotationIndexNextBricks]);
 		stepNextBricks(gs, res, gridData, thisGridIndex);
 	}
+	DBG_IF(flux::verbose, "INICIANDO updateGrid");
 	updateGrid(gs, res, gridData, thisGridIndex, eraseBricks);
 
 	return atack;
 }
-
 
 void stepNextBricks(GameState& gs, Resources& res, GridData& gridData, size_t thisGridIndex)
 {
@@ -374,80 +304,23 @@ void stepNextBricks(GameState& gs, Resources& res, GridData& gridData, size_t th
 	gridData.rotationIndexNextBricks = static_cast<int8_t>((adj + 1) % static_cast<int>(gridData.nextBricks.size()));
 }
 
-void eraseBricksFromCurrentBricks(GridData& gridData, std::vector<int16_t>& indexesOfDeprecatedBricks)
-{
-	if (indexesOfDeprecatedBricks.empty()) return;
-
-#ifdef DEBUG
-	std::cout << "erasing bricks\n";
-#endif // DEBUG
-
-	std::vector<BrickData>& currentBricks = gridData.currentBricks;
-
-
-	std::unordered_set<int16_t> toDelete(indexesOfDeprecatedBricks.begin(), indexesOfDeprecatedBricks.end());
-
-	size_t writeIndex = 0;
-	for (size_t readIndex = 0; readIndex < currentBricks.size(); ++readIndex)
-	{
-		// readed element not in toDelete set
-		if (toDelete.find(readIndex) == toDelete.end())
-		{
-			if (writeIndex != readIndex)
-			{
-				currentBricks[writeIndex] = std::move(currentBricks[readIndex]);
-				currentBricks[writeIndex].indexInCurrentBricks = writeIndex;
-
-				for (GameObject& u : currentBricks[writeIndex].units)
-				{
-					BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-					uData.indexInCurrentBricks = writeIndex;
-
-					gridData.gridUnitsData[uData.position.y][uData.position.x].brickIndex = writeIndex;
-				}
-			}
-
-			writeIndex++;
-		}
-	}
-
-	currentBricks.erase(currentBricks.begin() + writeIndex, currentBricks.end());
-
-#ifdef DEBUG
-	std::cout << "erasing completed!!!!\n";
-#endif // DEBUG
-}
-
-
 AtackInfo cleanFullLines(GameState& gs, Resources& res, GridData& gridData, size_t thisGridIndex)
 {
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	std::vector<BrickData>& currentBricks = gridData.currentBricks;
 
-	std::unordered_set<size_t> fullLines;
+	std::unordered_set<int> fullLines;
 
 	AtackInfo atack;
 
-	// checks for full lines
-	for (size_t i = 0; i < gridData.gridRows; i++)
+	// checks for full lines, bottom row upward
+	for (int i = 0; i < gridData.gridRows; i++)
 	{
-		size_t readRow = gridData.gridRows - 1 - i;
+		int readRow = gridData.gridRows - 1 - i;
 
 		if (gridData.rowsStatus[readRow].numOfBricks == 0) break;
 
-		bool fullLineFound = gridData.rowsStatus[readRow].numOfBricks == gridData.gridColumns;
-
-#ifdef DEBUG
-		for (int pos : gridData.rowsStatus[i].positionsFilled)
-		{
-			std::cout << pos << " ";
-		}
-		std::cout << "\n";
-		std::cout << i << " -> " << fullLineFound << "(" << std::accumulate(gridData.rowsStatus[i].positionsFilled.begin(), gridData.rowsStatus[i].positionsFilled.end(), 0) << " == " << gridData.gridColumns << ")" << "\n";
-
-#endif // DEBUG
-
-		if (fullLineFound)
+		if (gridData.rowsStatus[readRow].numOfBricks == gridData.gridColumns)
 		{
 			fullLines.insert(readRow);
 			atack.rowsEliminatedCords.push_back(static_cast<int8_t>(readRow));
@@ -456,10 +329,14 @@ AtackInfo cleanFullLines(GameState& gs, Resources& res, GridData& gridData, size
 
 	if (fullLines.empty()) return atack;
 
-	atack.lowestRowEliminated = static_cast<int8_t>(atack.rowsEliminatedCords.front());
-	atack.highestRowEliminated = static_cast<int8_t>(atack.rowsEliminatedCords.back());
+	// rowsEliminatedCords is filled bottom-up, so front() is the bottommost row
+	// (largest y) and back() the topmost.
+	atack.lowestRowEliminated = atack.rowsEliminatedCords.front();
+	atack.highestRowEliminated = atack.rowsEliminatedCords.back();
 
-	size_t writeRow = atack.lowestRowEliminated;
+	// int, not size_t: writeRow is decremented past 0 on a full board, and an
+	// unsigned wrap here indexed rowsStatus far out of bounds.
+	int writeRow = atack.lowestRowEliminated;
 	for (int readRow = atack.lowestRowEliminated; readRow > -1; readRow--)
 	{
 		// readed row not in fullLines set
@@ -473,8 +350,7 @@ AtackInfo cleanFullLines(GameState& gs, Resources& res, GridData& gridData, size
 				{
 					if (cell)
 					{
-						GameObject& u = currentBricks[cell.brickIndex].units[cell.unitNum];
-						BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
+						BrickUnitData& uData = gridData.currentUnits[cell.unitHandle];
 
 						uData.position.y = writeRow;
 
@@ -487,30 +363,23 @@ AtackInfo cleanFullLines(GameState& gs, Resources& res, GridData& gridData, size
 						}
 					}
 				}
-				// statistics update
-				// statistics update
-				// statistics update
-				gridData.rowsStatus[writeRow].numOfBricks = std::move(gridData.rowsStatus[readRow].numOfBricks);
-				// statistics update
-				// statistics update
-				// statistics update
+
+				gridData.rowsStatus[writeRow].numOfBricks = gridData.rowsStatus[readRow].numOfBricks;
 			}
 			writeRow--;
 		}
 		else
 		{
 			atack.atack += 1;
-			atack.unitDataRowsEliminated.push_back(std::vector<GameObject>{});
+			atack.unitsEliminated.push_back(std::vector<ClearedUnit>{});
 
 			for (GridCell& cell : grid[readRow])
 			{
-				GameObject& u = currentBricks[cell.brickIndex].units[cell.unitNum];
-				BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
+				if (!cell) continue;
 
-				atack.unitDataRowsEliminated.back().push_back(u);
+				BrickUnitData& uData = gridData.currentUnits[cell.unitHandle];
 
-				//T, I, S, Z, J, L, O, nullPiece
-				uData.shape = Piece::nullPiece;
+				atack.unitsEliminated.back().push_back(ClearedUnit{ uData.position, uData.shape });
 
 				BrickData& brick = currentBricks[uData.indexInCurrentBricks];
 
@@ -520,97 +389,34 @@ AtackInfo cleanFullLines(GameState& gs, Resources& res, GridData& gridData, size
 					gridData.bricksToUpdate.push_back(brick.indexInCurrentBricks);
 					brick.hasToUpdate = true;
 				}
+
+				// Only marked dead here. The handle is released in updateGrid, once
+				// the brick's unit list has been rescanned and the grid rebuilt.
+				uData.shape = Piece::nullPiece;
 			}
 		}
 	}
 
-	// statistics update
-	// statistics update
-	// statistics update
-	if (!fullLines.empty())
+	// Everything from row 0 down to writeRow is empty now: rows below it were filled
+	// by the shift, and the scan stopped at the first already-empty row above the
+	// stack. Replaces a `writeRow - i` loop that could index negatively.
+	for (int r = 0; r <= writeRow; ++r)
 	{
-		for (int i = 0; i < atack.rowsEliminatedCords.size(); ++i)
-		{
-			int idx = writeRow - i;
-			gridData.rowsStatus[idx].numOfBricks = 0;
-		}
-
-		for (int i = 0; i < gridData.gridColumns; i++)
-		{
-			int height = gridData.columnsStatus[i].height;
-			if (height > atack.highestRowEliminated)
-			{
-				gridData.columnsStatus[i].height -= static_cast<int8_t>(atack.rowsEliminatedCords.size());
-
-			}
-			else
-			{
-				if (atack.highestRowEliminated == gridData.gridRows - 1)
-				{
-					gridData.columnsStatus[i].height = 0;
-					continue;
-				}
-				for (int j = atack.highestRowEliminated + 1; j < gridData.gridRows; j++)
-				{
-					if (grid[j][i])
-					{
-						gridData.columnsStatus[i].height = gridData.gridRows - j;
-						break;
-					}
-				}
-			}
-		}
+		gridData.rowsStatus[r].numOfBricks = 0;
 	}
-	for (int i = 0; i < gridData.columnsAligningConsecutiveAtackGaps.size(); i++)
-	{
-		std::array<int8_t, 3>& atackGap = gridData.columnsAligningConsecutiveAtackGaps[i];
-		int8_t& column = atackGap[0];
-		int8_t& startY = atackGap[1];
-		int8_t& endY = atackGap[2];
-		int8_t gapSize = endY - startY + 1;
-		if (startY > atack.lowestRowEliminated)
-		{
-			continue;
-		}
-		else if (endY < atack.highestRowEliminated)
-		{
-			startY += atack.rowsEliminatedCords.size();
-			endY += atack.rowsEliminatedCords.size();
-		}
-		else if (endY <= atack.lowestRowEliminated && startY >= atack.highestRowEliminated)
-		{
-			gridData.columnsStatus[column].uniqueConsecutiveGaps -= 1;
-			gridData.columnsAligningConsecutiveAtackGaps.erase(gridData.columnsAligningConsecutiveAtackGaps.begin() + i);
-		}
-		else if (endY <= atack.lowestRowEliminated)
-		{
-			endY = atack.highestRowEliminated - 1 + atack.rowsEliminatedCords.size();
-			startY += atack.rowsEliminatedCords.size();
-		}
-		else if (startY >= atack.highestRowEliminated)
-		{
-			startY = atack.lowestRowEliminated + 1;
-		}
-	}
-	// statistics update
-	// statistics update
-	// statistics update
-
 
 	return atack;
 }
 
 
 void updateGrid(GameState& gs, Resources& res, GridData& gridData, size_t thisGridIndex, bool eraseBricks)
-{
+{	
 	if (gridData.bricksToUpdate.empty()) return;
 
-
-	std::vector<std::vector<GridCell>>& grid = gridData.gridUnitsData;
+	stdMat<GridCell>& grid = gridData.gridUnitsData;
 	std::vector<BrickData>& currentBricks = gridData.currentBricks;
 
-	std::vector<int16_t> indexesOfDeprecatedBricks;
-
+	DBG_IF(flux::verbose, "LIMPANDO GRID");
 	// cleans grid
 	for (int brickToUpdateIndex : gridData.bricksToUpdate)
 	{
@@ -622,76 +428,66 @@ void updateGrid(GameState& gs, Resources& res, GridData& gridData, size_t thisGr
 		}
 	}
 
-	size_t acumulatedDeltaFromPrevBricks = 0;
-
 	// re-adds bricks
 	for (int brickToUpdateIndex : gridData.bricksToUpdate)
 	{
+		DBG_IF(flux::verbose, "RE-ADDING BRICK", brickToUpdateIndex);
 		BrickData& brickToUpdate = currentBricks[brickToUpdateIndex];
 
-		if (brickToUpdate.numDreprecatedUnits == 4)
+		for (GameObject& u : brickToUpdate.units)
 		{
-			indexesOfDeprecatedBricks.push_back(brickToUpdate.indexInCurrentBricks);
-		}
-
-		bool brickIsSolid = brickToUpdate.state == BrickState::solid;
-		std::unordered_set<int> deprecatedUnitsIdx;
-
-
-		for (int i = 0; i < brickToUpdate.units.size(); i++)
-		{
-			GameObject& u = brickToUpdate.units[i];
 			BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
 
 			if (uData)
 			{
-				grid[uData.position.y][uData.position.x].brickIndex = uData.indexInCurrentBricks;
-				grid[uData.position.y][uData.position.x].unitNum = uData.numeration;
+				grid[uData.position.y][uData.position.x] = GridCell(static_cast<int32_t>(u.specificDataLocation));
 
-				uData.prevPosition.y = uData.position.y;
-				uData.prevPosition.x = uData.position.x;
-			}
-			else
-			{
-				deprecatedUnitsIdx.insert(i);
+				uData.prevPosition = uData.position;
 			}
 		}
 
 		if (eraseBricks)
 		{
-			// removes deprecated units from brick
+			// Drop dead units from the brick and release their pool slots. Nothing is
+			// renumbered: survivors keep the handles they already had, so every
+			// GridCell naming them stays valid. This replaces the old compaction,
+			// which rewrote handles with an accumulator that counted kept units where
+			// it needed removed ones, and wrote past the end of currentUnits.
 			size_t writeIdx = 0;
 			for (size_t readIdx = 0; readIdx < brickToUpdate.units.size(); ++readIdx)
 			{
-				if (deprecatedUnitsIdx.find(readIdx) == deprecatedUnitsIdx.end())
+				GameObject& u = brickToUpdate.units[readIdx];
+
+				if (gridData.currentUnits[u.specificDataLocation])
 				{
 					if (writeIdx != readIdx)
 					{
-						GameObject& u = brickToUpdate.units[writeIdx];
-						u = std::move(brickToUpdate.units[readIdx]);
-						BrickUnitData& uData = gridData.currentUnits[u.specificDataLocation];
-
-						uData.numeration = writeIdx;
-
-						grid[uData.position.y][uData.position.x].unitNum = writeIdx;
-
-						u.specificDataLocation = u.specificDataLocation - (readIdx - writeIdx) - acumulatedDeltaFromPrevBricks;
-
-						gridData.currentUnits[u.specificDataLocation] = std::move(uData);
+						brickToUpdate.units[writeIdx] = std::move(u);
 					}
-
 					writeIdx++;
 				}
+				else
+				{
+					freeUnit(gridData, u.specificDataLocation);
+				}
 			}
-			acumulatedDeltaFromPrevBricks += writeIdx;
 
 			brickToUpdate.units.erase(brickToUpdate.units.begin() + writeIdx, brickToUpdate.units.end());
 		}
 
-		brickToUpdate.hasToUpdate = false;
+		// A brick with no units left is released too. The shape guard makes a
+		// duplicate entry in bricksToUpdate harmless -- freeing a slot twice would
+		// hand the same handle out to two different bricks.
+		if (eraseBricks && brickToUpdate.units.empty() && brickToUpdate.shape != Piece::nullPiece)
+		{
+			DBG_IF(flux::verbose, "FREEING BRICK", brickToUpdateIndex);
+			freeBrick(gridData, brickToUpdateIndex);
+		}
+		else
+		{
+			brickToUpdate.hasToUpdate = false;
+		}
 	}
-
-	if (eraseBricks) eraseBricksFromCurrentBricks(gridData, indexesOfDeprecatedBricks);
 
 	gridData.bricksToUpdate.clear();
 }

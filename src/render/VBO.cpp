@@ -4,7 +4,7 @@
 VBO::VBO()
 {
 	glGenBuffers(1, &ID);
-	MDBG("phase", "VBO::VBO glGenBuffers");
+	MDBG_IF(flux::verbose, DBG_N("phase", "VBO::VBO glGenBuffers"));
 }
 
 void VBO::createVBO(std::vector<Vertex>& vertices)

@@ -10,6 +10,7 @@
 #include<glm/gtc/type_ptr.hpp>
 #include<glm/gtx/rotate_vector.hpp>
 
+#include "util/StdAliases.h"
 #include "render/camera.h"
 #include "render/texture.h"
 #include "render/animation.h"
@@ -69,14 +70,12 @@ enum class Piece {
 class BrickUnitData {
 public:
 	Piece shape;//brick has
-	int8_t numeration;
 	int8_t rotationState;//brick has
 	std::array<glm::ivec2, 4> rotAdjustments;
 	glm::ivec2 position;
 	glm::ivec2 prevPosition;
 	int16_t indexInCurrentBricks;//brick has
 	uint32_t brickId;//brick has
-	size_t idxCurrentUnits;
 
 	explicit operator bool() const {
 		return shape != Piece::nullPiece;
@@ -84,38 +83,26 @@ public:
 
 	BrickUnitData() :
 		shape(Piece::nullPiece),
-		numeration(-1),
 		rotationState(0),
 		position(glm::ivec2(-1, -1)),
 		prevPosition(glm::ivec2(-1, -1)),
 		indexInCurrentBricks(-1),
 		brickId(0),
-		rotAdjustments(std::array<glm::ivec2, 4> {}),
-		idxCurrentUnits(0)
+		rotAdjustments(std::array<glm::ivec2, 4> {})
 	{
 	}
-	BrickUnitData(int x, int y, std::array<glm::ivec2, 4> ra, Piece s, int n, size_t index, uint32_t id, size_t idxCurUnits) :
+	BrickUnitData(glm::ivec2 pos, std::array<glm::ivec2, 4> ra, Piece s, size_t index, uint32_t id) :
 		shape(s),
-		numeration(n),
-		rotationState(0),
-		position(glm::ivec2(x, y)),
-		prevPosition(glm::ivec2(x, y)),
-		indexInCurrentBricks(index),
-		brickId(id),
-		rotAdjustments(ra),
-		idxCurrentUnits(idxCurUnits)
-	{
-	}
-	BrickUnitData(glm::ivec2 pos, std::array<glm::ivec2, 4> ra, Piece s, int n, size_t index, uint32_t id, size_t idxCurUnits) :
-		shape(s),
-		numeration(n),
 		rotationState(0),
 		position(pos),
 		prevPosition(pos),
-		indexInCurrentBricks(index),
+		indexInCurrentBricks(static_cast<int16_t>(index)),
 		brickId(id),
-		rotAdjustments(ra),
-		idxCurrentUnits(idxCurUnits)
+		rotAdjustments(ra)
+	{
+	}
+	BrickUnitData(int x, int y, std::array<glm::ivec2, 4> ra, Piece s, size_t index, uint32_t id) :
+		BrickUnitData(glm::ivec2(x, y), ra, s, index, id)
 	{
 	}
 };
@@ -124,10 +111,14 @@ public:
 
 class LevelData {};
 
+// Per-row occupancy count. This is the ONLY maintained statistic: cleanFullLines
+// needs it to detect full rows in O(1). Board features used by the AI (heights,
+// holes, bumpiness, wells) are computed inside AISim on simulated boards instead --
+// maintaining them here would be a parallel structure that cannot be reused for the
+// hypothetical boards the search actually evaluates. See docs/AI.md.
 struct RowStatistics
 {
 	int numOfBricks;
-	bool hasToUpdate = false;
 	int8_t y;
 
 	RowStatistics(int8_t pos) :
@@ -135,36 +126,23 @@ struct RowStatistics
 		y(pos)
 	{
 	}
-
-};
-struct ColumnStatistics
-{
-	bool hasToUpdate = false;
-	int8_t x;
-	int8_t height = 0;
-	int8_t uniqueConsecutiveGaps = 0;
-
-	ColumnStatistics(int8_t pos) :
-		x(pos)
-	{
-	}
-
 };
 
+// A cell names the unit occupying it by its stable handle into
+// GridData::currentUnits. The previous (brickIndex, unitNum) pair was two indices
+// into vectors that both got compacted, so cells went stale on every line clear.
 struct GridCell
 {
-	int16_t brickIndex;
-	int8_t unitNum;
-	GridCell()
+	int32_t unitHandle;
+
+	GridCell() : unitHandle(-1)
 	{
-		brickIndex = -1;
-		unitNum = -1;
 	}
-	GridCell(int16_t num1, int8_t num2) : brickIndex(num1), unitNum(num2)
+	explicit GridCell(int32_t handle) : unitHandle(handle)
 	{
 	}
 	explicit operator bool() const {
-		return brickIndex != -1;
+		return unitHandle != -1;
 	}
 };
 
@@ -229,21 +207,29 @@ public:
 
 struct GridData
 {
-	int8_t gridColumns, gridRows;
-	std::vector<std::vector<GridCell>> gridUnitsData;
+	int gridColumns, gridRows;
+	stdMat<GridCell> gridUnitsData;
 	std::vector<RowStatistics> rowsStatus;
-	std::vector<ColumnStatistics> columnsStatus;
-	std::vector<std::array<int8_t, 3>> columnsAligningConsecutiveAtackGaps;
 
-	int8_t rotationIndexNextBricks;
+	int rotationIndexNextBricks;
 
 	std::vector<Piece>	nextBricks;
 	std::vector<Piece> brickBuild;
 
 	uint32_t idNextCreatedBrick;
 
+	// Pools. Entries are NEVER moved or renumbered: a handle stays valid for the
+	// whole lifetime of what it names. Freed slots go on the matching free list and
+	// get reused by the next allocation, which is what keeps the pools bounded.
+	// Compacting these instead is what corrupted the heap -- see docs/Entity Handles.md.
 	std::vector<BrickData> currentBricks;
 	std::vector<BrickUnitData> currentUnits;
+	std::vector<size_t> freeBricks;
+	std::vector<size_t> freeUnits;
+
+	// The one piece of ordering the game actually needs. Previously implicit as
+	// currentBricks.back(), an invariant every call site had to remember to keep.
+	int32_t playingBrickHandle = -1;
 
 	std::vector<int16_t> bricksToUpdate;
 
@@ -251,7 +237,17 @@ struct GridData
 
 	BrickData previewBrick;
 
-	int8_t biggestYFallForPlayingBrick;
+	// Set true whenever the playing brick's position/rotation actually change
+	// (successful move, rotation, or hard drop) or a new playing brick is
+	// created. Consumed (and cleared) by the update pipeline in main.cpp to
+	// decide whether previewBrick needs to be resynced -- replaces what used
+	// to be inferred locally from updatePlayingBrick's return value.
+	bool previewHasToUpdate = false;
+
+	int biggestYFallForPlayingBrick = 27;
+
+	BrickData& playingBrick() { return currentBricks[playingBrickHandle]; }
+	const BrickData& playingBrick() const { return currentBricks[playingBrickHandle]; }
 
 	GridData() :
 		idNextCreatedBrick(1),
@@ -260,18 +256,13 @@ struct GridData
 		brickBuild(std::vector<Piece>{ Piece::T, Piece::S, Piece::Z, Piece::J, Piece::L, Piece::I, Piece::O }),
 		reservedBrick(Piece::nullPiece),
 		rotationIndexNextBricks(0),
-		previewBrick(BrickData()),
-		biggestYFallForPlayingBrick(27)
+		previewBrick(BrickData())
 	{
 		for (size_t i = 0; i < gridRows; i++)
 		{
 			rowsStatus.push_back(RowStatistics(i));
 		}
-		for (size_t i = 0; i < gridColumns; i++)
-		{
-			columnsStatus.push_back(ColumnStatistics(i));
-		}
 
-		gridUnitsData = std::vector<std::vector<GridCell>>(gridRows, std::vector<GridCell>(gridColumns, GridCell()));
+		gridUnitsData = stdMat<GridCell>(gridRows, std::vector<GridCell>(gridColumns, GridCell()));
 	}
 };

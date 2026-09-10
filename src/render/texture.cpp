@@ -30,7 +30,7 @@ Texture::Texture(const char* image, const char* texType, GLenum slot, GLenum for
 
 	SDL_DestroySurface(surface);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	MDBG(DBG_N("phase", "Texture loaded"), DBG_N("path", image), DBG_N("slot", static_cast<unsigned int>(slot)));
+	MDBG_IF(flux::verbose, DBG_N("phase", "Texture loaded"), DBG_N("path", image), DBG_N("slot", static_cast<unsigned int>(slot)));
 }
 
 void Texture::texUnit(Shader& shader, const char* uniform, GLuint unit)

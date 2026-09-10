@@ -6,6 +6,7 @@
 #include "render/animation.h"
 #include "render/texture.h"
 #include "util/mathUtils.h"
+#include "util/StdAliases.h"
 #include <vector>
 #include <array>
 
@@ -19,11 +20,11 @@ struct Resources
 	std::vector<Light> brickLights;
 	std::vector<Light> scenarioLights;
 
-	std::array<std::vector<Texture>, 2> texs;
+	arrVec<Texture, 2> texs;
 
-	std::vector< std::vector<Animation>> anims;
-	std::vector< std::vector<Vertex>> verts;
-	std::vector<std::vector<GLuint>> indices;
+	stdMat<Animation> anims;
+	stdMat<Vertex> verts;
+	stdMat<GLuint> indices;
 
 	std::vector<Mesh> meshs;
 	std::vector<Point> points;

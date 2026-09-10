@@ -59,3 +59,6 @@ to know the including file's own location.
 ## See also
 - [[Assets]] — how shaders/textures are loaded at runtime
 - [[Build System]] — CMakeLists.txt, Libraries/, run.sh
+- [[Entity Handles]] — how game entities are stored and addressed
+- [[Memory Safety]] — debugging heap corruption in this codebase
+- [[AI]] and [[Attack Gauge]] — the enemy player and the mechanic it plays
