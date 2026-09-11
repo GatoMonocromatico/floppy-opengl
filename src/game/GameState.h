@@ -93,7 +93,7 @@ struct GameState
 	Timer preventAcidentalHardDropTimer;
 	Timer FPSTimer;
 
-	uint fpsLimit = -1;
+	uint fpsLimit = 100;
 
 	int fps;
 

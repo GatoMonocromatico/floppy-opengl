@@ -395,3 +395,5 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
+/build-asan/
+screenshot.png

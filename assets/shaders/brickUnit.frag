@@ -115,7 +115,7 @@ void main()
       specularLight += pow(max(dot(viewDirect, reflectionDirect), 0.0), 32);
    };
 
-   float ambient = 0.15;
+   float ambient = 0.30;
    vec3 finalLight = vec3(pow(ambient + diffuseLight.r*0.5 + specularLight.r*specularStrenght, ambientLight), pow(ambient + diffuseLight.g*0.5 + specularLight.g*specularStrenght, ambientLight), pow(ambient + diffuseLight.b*0.5 + specularLight.b*specularStrenght, ambientLight));
 
    vec4 textureColor = texture(tex0, texCoord);

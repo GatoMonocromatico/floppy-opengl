@@ -10,8 +10,11 @@ void createPlayingBrick(GameState& gs, Resources& res, size_t thisGridIndex, Pie
 	// invalidate anything held across it.
 	const size_t previewLoc = gridData.previewBrick.units[0].specificDataLocation;
 
-	gs.fallLockInTimer.reset();
-	gs.coutingLockIn = false;
+	if (thisGridIndex == 0)
+	{
+		gs.fallLockInTimer.reset();
+		gs.coutingLockIn = false;
+	}
 
 	if (shape == Piece::nullPiece)
 	{
@@ -243,7 +246,18 @@ std::array<bool, 3> updatePlayingBrick(const SDLState& state, GameState& gs, Res
 		}
 	}
 
-	gridData.biggestYFallForPlayingBrick = getbiggestYFallForBrick(brick, gridData);
+	// Re-fetch rather than reusing `brick`, for two separate reasons.
+	//
+	// Lifetime: AIUpdate above can lock a piece, which spawns the next one and
+	// push_back()s into currentBricks. That reallocates, and `brick` -- bound at the
+	// top of this function -- dangles. ASan reports it as a heap-use-after-free here.
+	// This is the pattern docs/Memory Safety.md describes: never hold a BrickData&
+	// across a call that can allocate.
+	//
+	// Correctness: even without a reallocation, locking re-points playingBrickHandle
+	// at the NEW piece, so `brick` names the piece that just landed. The fall
+	// distance would describe the wrong brick for a frame.
+	gridData.biggestYFallForPlayingBrick = getbiggestYFallForBrick(gridData.playingBrick(), gridData);
 	DBG_IF(flux::verbose, "gridData.fall", gridData.biggestYFallForPlayingBrick);
 
 	return playingBrickMoved;

@@ -82,6 +82,8 @@ Ordered roughly by impact on play strength:
   machine. Only worth keeping if look-ahead depth grows a lot.
 
 ## See also
+- [[Portal]] — grid 1 is no longer invisible: the AI's board is rendered every frame
+  and shown to the player through the portal
 - [[Attack Gauge]] — the system the evaluation function actually needs to optimise
 - [[Entity Handles]] — the pools the AI reads from, and why it copies out instead
 - [[Memory Safety]] — the corruption the deleted statistics pipeline was causing

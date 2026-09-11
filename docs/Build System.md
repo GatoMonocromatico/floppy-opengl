@@ -42,6 +42,22 @@ Convenience script: configures + builds a Debug build, then runs the executable 
 project root first — this is what makes the relative asset paths in [[Assets]] resolve
 correctly.
 
+## Debug hooks
+
+Two environment variables, both no-ops when unset, both added to make a 3D effect
+verifiable without a human at the keyboard (see [[Portal]]):
+
+- `TR_CAMERA="x,y,z[,yaw,pitch]"` — repositions the camera at startup. An effect that
+  is only ever checked head-on has not been checked.
+- `TR_PORTAL="x,y,z[,yaw,pitch,scale]"` — repositions and resizes the [[Portal]] at
+  startup. Sizing it is a visual judgement, so this makes trying a size a rerun
+  rather than a rebuild.
+- `TR_SHOT=<path>` (with optional `TR_SHOT_AFTER=<seconds>`, default 2) — renders for
+  that long, writes one PNG and exits. Captures the back buffer directly, so it is
+  exactly one rendered frame with no compositor or window focus involved.
+
+In-game: `F12` writes `screenshot.png`, `M` replays the portal's materialisation.
+
 ## See also
 - [[Project Structure]] — where everything CMake compiles actually lives
 - [[Assets]] — why the working directory matters at runtime

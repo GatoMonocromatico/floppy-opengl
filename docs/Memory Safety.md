@@ -78,6 +78,28 @@ count *removed* (`updateGrid:698`), so the arithmetic drifts. `currentUnits` is 
 actually shrunk to match either — measured growth is +4 units per piece with no
 reclamation, even across line clears.
 
+### 4. `updatePlayingBrick` — playing-brick reference across an AI lock-in
+
+Found 2026-09-09 by running the ASan build for 60s while adding the [[Portal]], so it
+is the same class of bug surviving in a fourth place.
+
+`gameCore.cpp:57` binds `BrickData& brick = gridData.playingBrick()`. Further down,
+the enemy branch calls `AIUpdate`, which on a decided move runs `executeMove` ->
+`playingPieceDropped` -> `createPlayingBrick` -> `createBrick`, and that `push_back`s
+into `currentBricks`. The vector reallocates and `brick` dangles. The read at the
+bottom of the function -- `getbiggestYFallForBrick(brick, gridData)` -- then reports
+`heap-use-after-free`.
+
+It is **also a logic bug independent of the lifetime issue**: locking re-points
+`playingBrickHandle` at the newly spawned piece, so even with no reallocation `brick`
+names the piece that just landed, and `biggestYFallForPlayingBrick` would describe the
+wrong brick for a frame.
+
+Fixed by re-fetching `gridData.playingBrick()` at the use site instead of reusing the
+reference. Note that only the *enemy* branch reaches `AIUpdate`, so this fires on grid
+1 — which is precisely why it went unnoticed: grid 1 was never drawn until the portal
+started rendering it.
+
 ## Root cause under the pattern
 
 The `currentBricks` / `currentUnits` / `specificDataLocation` /
@@ -92,6 +114,7 @@ collapsing it to a plain `Piece` grid plus one active-piece struct would delete 
 five indices and all three bug classes together.
 
 ## See also
+- [[Portal]] — added the ASan run that surfaced bug 4, and made grid 1 visible
 - [[Game]] — the layer all of this lives in
 - [[AI]] — why the incremental statistics these bugs live in are not needed
 - [[Build System]] — the CMake setup the ASan build overrides

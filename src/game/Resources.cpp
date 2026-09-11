@@ -287,6 +287,108 @@ void Resources::load()
 		DBG_IF(flux::verbose, "ScenarioLights block not found!");
 	}
 
+	// --- portal pipeline ----------------------------------------------------
+	// Offscreen target for the opponent's screen. Wider than the playfield's own
+	// 1:2, because it captures the grid PLUS a margin of the surrounding screen --
+	// see backgroundExpand below.
+	const int boardTexWidth = 624;
+	const int boardTexHeight = 1024;
+	opponentBoard.create(boardTexWidth, boardTexHeight);
+
+	// Where the visible playfield actually lands, derived rather than eyeballed.
+	// A brick instance sits at cellSize*column in x and cellSize*sin(82) per row in
+	// y, offset by brickUnitMesh's own translation, and the whole mesh is then
+	// tilted -8 degrees about X.
+	//
+	// Only rows 6..25 are framed. Rows 0..5 are the spawn buffer above the
+	// playfield: leaving them in frame would show the opponent's next piece before
+	// it enters play, which is information their screen does not give them either.
+	const float cellSize = 0.030483870967741f;
+	const float meshOffsetX = 0.543548387096774f - 0.775f;
+	const float meshOffsetY = -0.336816396484375f;
+	const int visibleTopRow = 6;
+
+	const float rowRise = cellSize * dsin(82.0f);
+	const float playfieldBottom = meshOffsetY - cellSize * 0.5f;
+	const float playfieldTop = meshOffsetY + (25 - visibleTopRow) * rowRise + cellSize * 0.5f;
+
+	// A brick's own quad spans [0, cellSize] in x but is CENTRED in y (see
+	// brickUnitVertices), so the two axes centre differently: the playfield is
+	// 10 whole cells wide starting at the mesh offset, but only half a cell tall
+	// either side of it.
+	const float gridCenterX = meshOffsetX + 10 * cellSize * 0.5f;
+	const float gridCenterYLocal = (playfieldTop + playfieldBottom) * 0.5f;
+	const float gridCenterZLocal = cellSize * 0.5f;
+	const float gridHalfHeight = (playfieldTop - playfieldBottom) * 0.5f;
+	const float gridHalfWidth = 10 * cellSize * 0.5f;
+	const float portalViewDistance = 1.0f;
+
+	// The capture is deliberately a little larger than the playfield, and the
+	// margin is their screen background rather than empty space.
+	//
+	// Why: the portal's matter is an ellipse and the window is a rectangle
+	// inscribed in it. At the rectangle's sides the ellipse still has room to
+	// spare, and at two opposing corners it falls short. The spilling corners get
+	// the electric arcs; the spare area at the sides would otherwise be showing
+	// nothing, so the surrounding screen fills it. The margin only has to reach the
+	// ellipse's bounding box -- it is filler, not subject, so it stays minimal.
+	// Kept small on purpose. The background is filler, not subject: it only has to
+	// cover the band of ellipse immediately outside the rectangle's sides, and then
+	// fade, leaving the ellipse's outer lobes to the matter itself. An earlier,
+	// generous margin covered the whole ellipse, which both pulled the opponent's
+	// NEXT panel into frame and painted over the matter's swirls entirely.
+	const float backgroundExpand = 1.123f;
+	const float captureHalfHeight = gridHalfHeight * backgroundExpand;
+	const float captureHalfWidth = captureHalfHeight * (float)boardTexWidth / (float)boardTexHeight;
+	portalViewHalfHeight = captureHalfHeight;
+
+	// The board is tilted, so a straight-down-Z camera would see it as a trapezoid
+	// (its top and bottom sit at different depths). Tilting the view camera by the
+	// same -8 degrees puts it square to the playfield and the image comes out flat.
+	const glm::mat4 boardTilt = glm::rotate(glm::mat4(1.0f), glm::radians(-8.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	const glm::vec3 boardCentre = glm::vec3(boardTilt * glm::vec4(gridCenterX, gridCenterYLocal, gridCenterZLocal, 1.0f));
+	const glm::vec3 boardForward = glm::vec3(boardTilt * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f));
+	const glm::vec3 boardUp = glm::vec3(boardTilt * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+
+	portalViewCamera.position = boardCentre - boardForward * portalViewDistance;
+	portalViewCamera.orientation = boardForward;
+	portalViewCamera.up = boardUp;
+
+	// --- portal placement and size -------------------------------------------
+	// Everything about where the portal is and how big it is lives here.
+	//
+	// `scale` is the one to reach for to resize the whole thing: it is uniform and
+	// multiplies the matter, the window, the arcs' thickness and the
+	// materialisation's grain together, because every length in portal.frag is in
+	// the portal's local units. TR_PORTAL overrides these at startup for quick
+	// visual iteration without a rebuild -- see applyPortalOverride in main.cpp.
+	//
+	// windowHalf and matterRadius change the effect's PROPORTIONS rather than its
+	// size, and they interact: the matter's ellipse has to cover the window's short
+	// edges and two opposing corners while falling short of the other two, or the
+	// electric arcs have nothing to do. Retune those together, and re-run
+	// portal.create() afterwards so the proxy quad is rebuilt to match.
+	//
+	// The yaw is deliberate: face-on the portal would read as a flat billboard, and
+	// the point of marching the effect in 3D is that it holds up as you walk round.
+	portal.windowHalf = glm::vec2(gridHalfWidth / gridHalfHeight * 0.42f, 0.42f);
+	portal.matterRadius = 0.56f;
+	portal.position = glm::vec3(1.28f, 0.02f, 0.12f);
+	portal.yawDegrees = -25.0f;
+	portal.pitchDegrees = 0.0f;
+	portal.scale = 1.0f;
+
+	// The grid fills slightly less than the whole window, so the outermost row and
+	// column of cells sit on a thin band of the opponent's screen instead of flush
+	// against the window's edge. Breathing space only -- the margin is filler, and
+	// anything more starts pulling their side panels into frame.
+	const float boardInset = 0.93f;
+	portal.contentScale = glm::vec2(gridHalfWidth / captureHalfWidth,
+	                                gridHalfHeight / captureHalfHeight) / boardInset;
+
+	portal.setTransform();
+	portal.create();
+
 	scenarioLights.push_back(Light{ glm::vec4(0.55f - 0.775f, 0.0f, 0.4f, 0.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) });
 	scenarioLights.push_back(Light{ glm::vec4(camera.position, 0.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(0.1f, 0.0f, 0.0f, 0.0f) });
 	brickLights.push_back(Light{ glm::vec4(0.0f,0.0f,0.1f,0.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) });

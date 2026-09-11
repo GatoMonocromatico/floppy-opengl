@@ -28,6 +28,13 @@ Tetris-roguelike game logic: grid/brick rules, AI, and the resource bundle that 
   boards; depends on `gameObject` and `Timer` ([[Util]]). See [[AI]] for the design and
   its known gaps, and [[Attack Gauge]] for the system it will need to optimise.
 
+## The portal pipeline
+
+`Resources` also owns the offscreen targets and the `Portal` object. Grid 1 — the
+[[AI]]'s board — is rendered head-on into `opponentBoard` every frame and painted onto
+the portal's matter. Note that `drawGrid` now takes a `Camera&`, because it is called
+twice per frame with two different cameras. See [[Portal]].
+
 ## Resources
 
 - **Resources** (`Resources.h/.cpp`) — the bundle of everything the renderer needs for
@@ -47,6 +54,8 @@ Resources ──> Mesh, Light, Point, Animation, Texture (all render/), mathUtil
 ```
 
 ## See also
+- [[World and Lore]] — the fiction that decides what these systems are allowed to be
+- [[Portal]] — the window onto the enemy grid this layer feeds
 - [[Entity Handles]] — how bricks and units are stored; the rule that keeps it sound
 - [[Memory Safety]] — past heap corruption in this layer and how to reproduce it
 - [[AI]] — the enemy player's design

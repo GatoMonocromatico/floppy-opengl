@@ -51,7 +51,7 @@ void main()
 
       diffuseLight += scenarioLights[i].color.rgb *
                  scenarioLights[i].intensity.r *
-                 max(dot(N1, lightDirect), 0) / dot(lightVector * 0.8, lightVector);
+                 max(dot(N1, lightDirect), 0) / dot(lightDirect, lightVector);
 
       vec3 viewDirect = normalize(scenarioLights[1].position.xyz - FragPos);
       vec3 reflectionDirect = reflect(-lightDirect, N1);
@@ -65,7 +65,7 @@ void main()
 
       diffuseLight += brickLights[j].color.rgb *
                  brickLights[j].intensity.r *
-                 max(dot(N1, lightDirect), 0) / dot(lightVector * 0.8, lightVector);
+                 max(dot(N1, lightDirect), 0) / dot(lightDirect, lightVector);
 
       vec3 viewDirect = normalize(scenarioLights[1].position.xyz - FragPos);
       vec3 reflectionDirect = reflect(-lightDirect, N1);
@@ -73,7 +73,10 @@ void main()
    };
 
 
-   float ambient = 0.0;
+   // Lifted off zero so the room is readable rather than pitch black. Note this
+   // only affects surfaces with naturalLuminence 1: where it is 0 the pow() below
+   // collapses to 1.0 and the surface is drawn at full brightness regardless.
+   float ambient = 0.3;
    vec3 finalLight = vec3(pow(ambient + diffuseLight.r*0.5 + specularLight.r*specularStrenght, ambientLight), pow(ambient + diffuseLight.g*0.5 + specularLight.g*specularStrenght, ambientLight), pow(ambient + diffuseLight.b*0.5 + specularLight.b*specularStrenght, ambientLight));
 
    vec4 textureColor = texture(tex0, texCoord);

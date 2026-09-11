@@ -34,8 +34,10 @@ add_executable(tetris_roguelike
     src/game/Resources.cpp
     src/render/camera.cpp
     src/render/EBO.cpp
+    src/render/Framebuffer.cpp
     src/render/Mesh.cpp
     src/render/point.cpp
+    src/render/Portal.cpp
     src/render/RoundedCorner2D.cpp
     src/render/shaderClass.cpp
     src/render/texture.cpp

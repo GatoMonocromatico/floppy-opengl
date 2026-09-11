@@ -33,11 +33,23 @@ public:
 	{
 	};
 	Camera() :
-		position(glm::vec3(-0.2f, 0.1f, 0.5f))
+		// Pulled back to a room framing that holds the whole cabinet AND the
+		// portal floating beside it. The previous default sat almost against the
+		// monitor, which filled the screen with the playfield and put every other
+		// object in the scene off camera. TR_CAMERA overrides this at startup.
+		position(glm::vec3(0.0f, 0.1f, 1.60f))
 	{
 	};
 	// Rebuild cameraMatrix from position/orientation and a perspective projection.
 	void updateMatrix(float FOVdeg, float nearPlane, float farPlane, int width, int height);
+	// Same, but orthographic, framing `halfHeight` world units above and below the
+	// centre. Used for the opponent-board pass: under perspective the brick cubes
+	// near the frame's edges are seen at an angle, show their dark side faces and
+	// clip the frustum, so edge cells looked blunt next to the middle ones. Under
+	// ortho every cube presents exactly its front face, so the whole board is
+	// uniformly sharp -- and it renders as flat 2D pieces without needing separate
+	// flat geometry, which is what the cabinet is supposed to draw anyway.
+	void updateMatrixOrtho(float halfHeight, float nearPlane, float farPlane, int width, int height);
 	// Upload the cached cameraMatrix to a mat4 uniform by name (e.g. "camMatrix").
 	void Matrix(Shader& shader, const char* uniform);
 	// Rotate the forward vector around an axis (used for one-off camera tweaks).

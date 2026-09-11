@@ -8,9 +8,15 @@ Runtime-loaded files — not compiled, just read off disk when the game starts.
 
 ```
 assets/
-├── shaders/    default.vert, default.frag, point.vert, point.frag, brickUnit.frag
+├── shaders/    default.vert, default.frag, point.vert, point.frag, brickUnit.frag,
+│               portal.vert, portal.frag
 └── textures/   arcade.png, brick-unit-skins.png, enemy-portal-spawn-anim.png, ...
 ```
+
+`portal.frag` is worth calling out: **every tuning value in the effect is a `const` in
+that file**, and shaders are read from disk at startup, so the [[Portal]]'s look can be
+retuned by editing it and rerunning — no C++ rebuild. `enemy-portal-spawn-anim.png` is
+currently unused; see [[Portal#Materialisation]] for why.
 
 ## How paths resolve
 
@@ -37,6 +43,7 @@ aren't committed to the repo. `assets/shaders/` is tracked normally (they're sma
 files and part of the reviewable diff).
 
 ## See also
+- [[Portal]] — the shader whose constants are the intended editing surface for its look
 - [[Render]] — the `Shader`/`Texture` classes that load these files
 - [[Build System]] — `run.sh`, which sets the working directory these relative paths
   depend on

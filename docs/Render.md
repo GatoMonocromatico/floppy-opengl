@@ -24,6 +24,14 @@ game state — see [[Game]] for that. Only depends on [[Util]] (`DebugLog.h`).
 - **Light** (`Light.h`) — CPU-side mirror of the `Light` struct in `default.frag`
   (std140 layout) for UBO upload.
 
+## Offscreen targets
+
+- **Framebuffer** (`Framebuffer.h/.cpp`) — a colour texture + depth renderbuffer to
+  render into, and `ScreenCapture`, a colour texture filled by copying the default
+  framebuffer. Both clamp to edge: the [[Portal]] samples them with distorted
+  coordinates that routinely leave `[0,1]`, and `GL_REPEAT` there would wrap the image
+  back over itself.
+
 ## Geometry
 
 - **Mesh** (`Mesh.h/.cpp`) — a drawable made of vertices + indices + textures, built on
@@ -33,23 +41,29 @@ game state — see [[Game]] for that. Only depends on [[Util]] (`DebugLog.h`).
   triangles.
 - **RoundedCorner2D** (`RoundedCorner2D.h/.cpp`) — generates rounded-rect 2D geometry as
   a `Mesh`.
+- **Portal** (`Portal.h/.cpp`) — proxy quad and uniform feed for the magical window;
+  the effect itself is raymarched per-fragment in `portal.frag`. Keeps its local space
+  isotropic on purpose — see [[Portal#Code shape]].
 
 ## Camera & animation
 
 - **Camera** (`camera.h/.cpp`) — view matrix, optional FPS yaw/pitch, uploads
-  `cameraMatrix` (proj * view) to shaders.
+  `cameraMatrix` (proj * view) to shaders. `updateMatrix` is perspective;
+  `updateMatrixOrtho` is the orthographic variant the opponent-board pass needs
+  (see [[Portal#Where the image comes from]]).
 - **Animation** (`animation.h`) — sprite-sheet frame stepping; depends on `Timer` from
   [[Util]].
 
 ## Dependency shape
 
 ```
-Mesh, Point ── depend on ──> VAO, EBO, Camera, Texture
+Mesh, Point, Portal ── depend on ──> VAO, EBO, Camera, Texture
 VAO ─────────> VBO
-Camera, Texture, Shader ─────> DebugLog (util)
+Camera, Texture, Shader, Framebuffer ─────> DebugLog (util)
 ```
 
 ## See also
+- [[Portal]] — the one effect in this layer that is a whole system rather than a wrapper
 - [[Game]] — the layer that assembles these into `Resources` and draws the actual game
 - [[Assets]] — where the shader source files and texture images these classes load
   actually live

@@ -57,6 +57,8 @@ This makes it obvious at a glance which layer a dependency comes from, without n
 to know the including file's own location.
 
 ## See also
+- [[World and Lore]] — the fiction every feature has to fit inside
+- [[Portal]] — the magical window, and the first effect built to that fiction
 - [[Assets]] — how shaders/textures are loaded at runtime
 - [[Build System]] — CMakeLists.txt, Libraries/, run.sh
 - [[Entity Handles]] — how game entities are stored and addressed

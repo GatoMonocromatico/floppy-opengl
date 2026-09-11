@@ -16,6 +16,16 @@ void Camera::updateMatrix(float FOVdeg, float nearPlane, float farPlane, int wid
 	cameraMatrix = proj * view;
 }
 
+void Camera::updateMatrixOrtho(float halfHeight, float nearPlane, float farPlane, int width, int height)
+{
+	const int safeWidth = std::max(width, 10);
+	const int safeHeight = std::max(height, 10);
+	const float halfWidth = halfHeight * (float)safeWidth / (float)safeHeight;
+	glm::mat4 view = glm::lookAt(position, position + orientation, up);
+	glm::mat4 proj = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearPlane, farPlane);
+	cameraMatrix = proj * view;
+}
+
 void Camera::Matrix(Shader& shader, const char* uniform)
 {
 	glUniformMatrix4fv(glGetUniformLocation(shader.ID, uniform), 1, GL_FALSE, glm::value_ptr(cameraMatrix));

@@ -71,6 +71,10 @@ Unresolved, and each one changes the implementation:
   modifier sources, cancel rules?
 
 ## See also
+- [[World and Lore]] — why the gauge is the *magic's reading* of the cabinet's Tetris,
+  not a feature of the cabinet; this is what licenses it to do un-arcade-like things
+- [[Portal]] — how the player sees the opponent this gauge is aimed at, and the system
+  waiting on this one to decide when a magical link opens
 - [[AI]] — the enemy that has to play this system
 - [[Game]] — where `AtackInfo` currently lives in `gameCore`
 - [[Memory Safety]] — the attack-gap statistics that were an early attempt at this
